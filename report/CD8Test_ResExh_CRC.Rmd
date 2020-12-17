@@ -1,0 +1,3371 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+# Set up
+```{r}
+mainDir <- getwd()
+outPath <- "../output/CD8/"
+figPath <- "../figure/CD8/"
+dataPath <- "../data/"
+scriptPath <- "../script/"
+
+tpmPath <- "/Users/mfor0011/Documents/data/NK_Data/singleCell_NK/Human/GSE146771_Zhang_CRC/"
+sigPath <- "/Users/mfor0011/Documents/data/signatures/ProcessedSigs/"
+
+# ifelse(!dir.exists(file.path(mainDir, outPath)), dir.create(file.path(mainDir, outPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, figPath)), dir.create(file.path(mainDir, figPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, dataPath)), dir.create(file.path(mainDir, dataPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, scriptPath)), dir.create(file.path(mainDir, scriptPath)), FALSE)
+
+# library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+library(ggbeeswarm)
+library(SingleCellExperiment)
+library(Seurat)
+
+options(digits = 3)
+
+equal_breaks <- function(n = nBreak, s = scalingFactor, ...){
+  function(x){
+    # rescaling
+    d <- s * diff(range(x)) / (1+2*s)
+    round( seq(min(x)+d, max(x)-d, length=n), 2)
+  }
+}
+
+nBreak = 3
+scalingFactor = 0.05
+
+textSize <- 1.2
+
+currentTheme <- theme_bw() +
+  theme(
+    # panel.background = element_blank()
+    axis.title = element_text(size = rel(textSize)),
+    axis.text = element_text(angle = 0, size = rel(textSize)),
+    # strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black", size = 0.5),
+    legend.position = 'top',
+    legend.title = element_text(size = rel(textSize), face = "italic"),
+    legend.text = element_text(size = rel(textSize)),
+    legend.key.size = unit(1, 'lines'),
+    ## increase the line space
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+cols <-  c(
+  brewer.pal(8, "Dark2")[-5],
+  brewer.pal(10, "Paired"),
+  brewer.pal(12, "Set3"),
+  brewer.pal(9, "Blues")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Oranges")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greens")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Purples")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Reds")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greys")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuGn")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "PuRd")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuPu")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "YlGn")[c(8, 3, 7, 4, 6, 9, 5)])
+
+
+source(paste0(scriptPath, "visReduction_function.R"))
+
+
+
+metaSmart <-
+  read.table(
+    paste0(tpmPath, "GSE146771_CRC.Leukocyte.Smart-seq2.Metadata.txt"),
+    header = T,
+    sep = "\t"
+  )
+
+metaSmart$Sub_Cluster <- as.character(metaSmart$Sub_Cluster)
+metaSmart$Sub_Cluster <- sapply(metaSmart$Sub_Cluster, function(x){
+  unlist(strsplit(x, "_"))[2]
+})
+
+
+immCells <- metaSmart$Sub_Cluster[grepl("CD8", metaSmart$Sub_Cluster)|
+                                    grepl("NK", metaSmart$Sub_Cluster) |
+                                    grepl("CD4", metaSmart$Sub_Cluster)|
+                                    grepl("ILC3", metaSmart$Sub_Cluster)]
+
+cellCols <- cols[1:length(unique(immCells))]
+names(cellCols) <- unique(immCells)[order(unique(immCells))]
+
+cd8Cols <- cellCols[grepl("CD8", names(cellCols))]
+```
+
+
+## Read signatures
+Read signatures ontained from Collins et al. as well as the processed immune signatures I have collected.
+
+```{r}
+source(paste0(scriptPath, "ReadSignatures.R"))
+```
+
+# Zhang 10X data
+```{r}
+## dim: 13538 43818
+# crc10x <-
+#   data.table::fread(
+#     paste0(tpmPath, "GSE146771_CRC.Leukocyte.10x.TPM.txt")
+#   )
+# 
+# rnames <- crc10x$V1
+# crc10x <- crc10x[, 2:ncol(crc10x)]
+# rownames(crc10x) <- rnames
+# 
+# crc10x <- as.matrix(crc10x)
+# rownames(crc10x) <- rnames
+# 
+# 
+# meta10x <-
+#   read.table(
+#     paste0(tpmPath, "GSE146771_CRC.Leukocyte.10x.Metadata.txt"),
+#     header = T,
+#     sep = "\t"
+#   )
+# 
+# 
+# meta10x$Sub_Cluster <- as.character(meta10x$Sub_Cluster)
+# meta10x$Sub_Cluster <- sapply(meta10x$Sub_Cluster, function(x){
+#   unlist(strsplit(x, "_"))[2]
+# })
+# 
+# 
+# sub10xCD8 <- crc10x[, grepl("CD8", meta10x$Sub_Cluster) ]
+# 
+# subMeta10xCD8 <- meta10x[grepl("CD8", meta10x$Sub_Cluster) , ]
+# 
+# rownames(subMeta10xCD8) <- subMeta10xCD8$CellName
+# 
+# all(subMeta10xCD8$CellName == colnames(sub10xCD8))
+# 
+# 
+# cd8_10x <-
+#   CreateSeuratObject(counts = sub10xCD8,
+#                      project = "Zhang_10X_CD8",
+#                      meta.data = subMeta10xCD8,
+#                      min.cells = 5)
+# 
+# cd8_10x[["percent.mt"]] <- PercentageFeatureSet(cd8_10x, pattern = "^MT-")
+# 
+# cell_attrsCD8_10x <- cd8_10x[[]]
+# 
+# saveRDS(cd8_10x, file = paste0(outPath, "Zhang_10X_SeuratObj_CD8_20200826.RDS"))
+
+
+cd8_10x <- readRDS(paste0(outPath, "Zhang_10X_SeuratObj_CD8_20200826.RDS"))
+
+cd8_10x$MSI <- "MSS"
+cd8_10x$MSI[cd8_10x$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+```
+
+
+### Score 10X CD8 T cells
+```{r, message = F, warning = F}
+library(singscore)
+
+rd_10X <- rankGenes(as.matrix(GetAssayData(cd8_10x)))
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd_10X, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresCollins) <- unique(collinsSig$Signature)
+rownames(scoresCollins) <- colnames(rd_10X)
+
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd_10X, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- names(selImmuneSigs)
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer"
+rownames(scoresImm) <- colnames(rd_10X)
+
+cd8_10x@meta.data <- data.frame(cd8_10x@meta.data , scoresCollins)
+cd8_10x@meta.data  <- data.frame(cd8_10x@meta.data , scoresImm)
+
+scoreNames <- c(colnames(scoresImm), colnames(scoresCollins))
+scoreNames <- scoreNames[order(scoreNames)]
+```
+
+```{r, fig.height = 4, fig.width = 9, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <-
+  FeatureScatter(cd8_10x,
+                 feature1 = "nCount_RNA",
+                 feature2 = "percent.mt",
+                 group.by = "Sub_Cluster", 
+                 cols = brewer.pal(8, "Set2"))
+plot2 <-
+  FeatureScatter(cd8_10x,
+                 feature1 = "nCount_RNA",
+                 feature2 = "nFeature_RNA",
+                 group.by = "Sample", 
+                 cols = brewer.pal(9, "Set1"))
+plot1 + plot2
+
+```
+
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(
+  cd8_10x,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 1,
+  group.by = "Sample",
+  pt.size = 0, cols = brewer.pal(9, "Set1")
+)
+```
+
+### Highly Variable genes
+```{r}
+cd8_10x <- FindVariableFeatures(cd8_10x, selection.method = "vst", nfeatures = 2000)
+
+top10 <- head(VariableFeatures(cd8_10x), 20)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(cd8_10x)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+### Scale data and run PCA
+```{r}
+all.genes <- rownames(cd8_10x)
+cd8_10x <- ScaleData(cd8_10x, features = all.genes)
+
+cd8_10x <- RunPCA(cd8_10x, features = VariableFeatures(object = cd8_10x), verbose = F)
+```
+
+```{r, fig.height = 6, fig.width = 6}
+VizDimLoadings(cd8_10x, dims = 1:2, reduction = "pca")
+```
+
+```{r}
+pdf(
+  paste0(figPath, "PCA_Zhang10X_CD8_HighVarGenes_20201005.pdf"),
+  height = 5,
+  width = 5
+)
+DimPlot(cd8_10x, reduction = "pca", group.by = "Sub_Cluster") + scale_color_manual(values = cd8Cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8_10x, reduction = "pca", group.by = "Tissue") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8_10x, reduction = "pca", group.by = "Sample") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8_10x, reduction = "pca", group.by = "MSI") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+dev.off()
+```
+
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(cd8_10x, dims = 1:30, cells = 500, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(cd8_10x, ndims = 40)
+```
+
+### Find clusters and UMAP 
+```{r}
+cd8_10x <- FindNeighbors(cd8_10x, dims = 1:20)
+cd8_10x <- FindClusters(cd8_10x, resolution = 0.5, random.seed = 20201005)
+# cd8_10x <- FindNeighbors(cd8_10x, dims = 1:15)
+# cd8_10x <- FindClusters(cd8_10x, resolution = 0.3, random.seed = 20200826)
+
+cd8_10x <- RunUMAP(cd8_10x, dims = 1:20, n.neighbors = 60, min.dist = 0.4, seed.use = 20201005)
+
+
+anns <- c("seurat_clusters", "Tissue", "Sample", "MSI")
+
+pdf(paste0(figPath, "UMAP_Zhang10X_CD8.pdf"),
+    height = 5,
+    width = 5)
+
+DimPlot(cd8_10x, reduction = "umap",
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+
+for (i in anns) {
+  print(
+    DimPlot(cd8_10x, reduction = "umap",
+            group.by = i) +
+      theme_minimal() +
+      scale_color_manual(values = cols) +
+      theme(legend.position = "top") +
+      guides(color = guide_legend(
+        nrow = 2,
+        override.aes = list(size = 3)
+      ))
+  )
+}
+
+dev.off()
+```
+
+#### Explore batch correction
+There seem to be batch effects based on samples
+
+1. Create Seurat object
+2. skip this: QC by filtering out cells based on percent.mito and nFeature_RNA
+3. skip this: SCT normalize each dataset specifying the parameter vars.to.regress = percent.mito
+4. Integrate all datasets - do not run the ScaleData function after integration
+5. Run PCA, UMAP, FindClusters, FindNeighbors (on default assay which is "integrated")
+6. Change default assay to "RNA"; normalize then generate FeaturePlots and perform differential expression analysis
+
+```{r}
+# cd8_batch <- readRDS(paste0(outPath, "Zhang_10X_SeuratObj_CD8_20200826.RDS"))
+# 
+# cd8_batch$MSI <- "MSS"
+# cd8_batch$MSI[cd8_batch$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+```
+
+```{r}
+# sce <- as.SingleCellExperiment(cd8_batch)
+# 
+# sce$Sample <- as.character(sce$Sample)
+# 
+# sce <- sce[, order(sce$Sample)]
+# sce$batch <- sce$Sample
+# 
+# library(scMerge)
+# 
+# 
+# data("segList", package = "scMerge")
+# negGenes <- segList$human$human_scSEG
+# negGenes <- negGenes[negGenes %in% rownames(sce)]
+# 
+# # negGenes <- scSEGIndex(exprs_mat = as.matrix(assay(sce)))
+# 
+# sceCorrect <- scMerge(sce_combine = sce,
+#                       ctl = negGenes,
+#                       batch_name = "batch",
+#                       kmeansK = c(4, 2, 7, 7, 7, 5, 7), 
+#                       ruvK = 10, 
+#                       verbose = T, 
+#                       assay_name = "scMerge",
+#                       BPPARAM = BiocParallel::MulticoreParam(workers = 14))
+# 
+# 
+# saveRDS(sceCorrect, paste0(outPath, "Zhang10X_CD8_scMerge_SCE.RDS"))
+# 
+# sceCorrect  <-  scater::runPCA(sceCorrect, exprs_values = "scMerge")
+# 
+# scater::plotPCA(
+#   sceCorrect, 
+#   colour_by = "Sub_Cluster")
+# 
+# sceCorrect <- scater::runUMAP(sceCorrect, pca = 30, n_neighbors = 60)
+# pdf(paste0(figPath, "UMAP_Zhang10X_CD8_scMerge.pdf"), height = 5, width = 6)
+# scater::plotUMAP(
+#   sceCorrect,
+#   colour_by = "Sub_Cluster")
+# 
+# scater::plotUMAP(
+#   sceCorrect,
+#   colour_by = "Tissue")
+# 
+# scater::plotUMAP(
+#   sceCorrect,
+#   colour_by = "Sample")
+# dev.off()
+```
+
+
+```{r, cache = TRUE}
+# donor.list <- SplitObject(cd8_batch, split.by = "Sample")
+
+# donor.list <- lapply(X = donor.list, FUN = function(x) {
+#     x <- NormalizeData(x)
+#     x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+# })
+
+# donor.list <- lapply(X = donor.list, FUN = function(x) {
+#  SCTransform(
+#   object = x,
+#   assay = "RNA",
+#   new.assay.name = "SCT",
+#   do.correct.umi = TRUE,
+#   ncells = NULL,
+#   variable.features.n = 2200,
+#   # variable.features.rv.th = 1.3,
+#   vars.to.regress = "percent.mt",  ## NULL by default
+#   do.scale = FALSE,
+#   do.center = TRUE,
+#   conserve.memory = FALSE,
+#   return.only.var.genes = TRUE,
+#   seed.use = 20200818,
+#   verbose = TRUE
+# )
+# })
+
+# options(future.globals.maxSize = 4000000000)
+# 
+# donor.list <- lapply(X = donor.list, FUN = function(x) {
+# currentSample <- donor.list[[x]]
+# currentSample@assays$SCT <- currentSample@assays$SCT 
+# })
+# 
+# donor.list$P1025@assays$RNA@data
+# 
+# donor.features <-
+#   SelectIntegrationFeatures(object.list = donor.list, nfeatures = 5000)
+# 
+# donor.list <-
+#   PrepSCTIntegration(object.list = donor.list,
+#                      anchor.features = donor.features,
+#                      verbose = TRUE)
+# 
+# donor.anchors <-
+#   FindIntegrationAnchors(
+#     object.list = donor.list,
+#     normalization.method = "SCT",
+#     anchor.features = donor.features,
+#     verbose = TRUE
+#   )
+# 
+# subGut_integrated <-
+#   IntegrateData(
+#     anchorset = donor.anchors,
+#     normalization.method = "SCT",
+#     verbose = TRUE
+#   )
+
+
+
+```
+
+
+### Color UMAP for markers
+
+```{r}
+cell_attrsCD8_10x <- cd8_10x[[]]
+currentRedData <- cd8_10x@reductions[["umap"]]@cell.embeddings
+
+cell_attrsCD8_10x$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsCD8_10x$UMAP_2 <- currentRedData[, "UMAP_2"]
+```
+
+```{r}
+exprData10x <- as.matrix(GetAssayData(cd8_10x, slot = "data"))
+
+
+# gg <-  CD8_ExhMarker
+gg <-  CD8_TrmMarker
+
+
+## ETV1 does not exist in 10X data
+exprData10x_Genes <-
+  exprData10x[rownames(exprData10x) %in% gg,]
+
+exprData10x_Genes <-
+  data.frame(cell_attrsCD8_10x,
+             data.frame(t(exprData10x_Genes), check.names = F),
+             check.names = F)
+
+
+exprLong10x <- exprData10x_Genes %>% 
+  pivot_longer(
+    values_to = "Expression",
+    names_to = "Genes" ,
+    cols = 122:ncol(exprData10x_Genes)
+  ) %>% 
+  data.frame(check.names = F)
+
+
+pdf(
+  paste0(figPath, "UMAP_Zhang10X_CD8_Trm_20201005.pdf"),
+  # height = 12,
+  # width = 15
+  height = 8,
+  width = 15
+)
+exprLong10x %>% 
+  group_by(Genes) %>% 
+  arrange(Expression) %>% 
+ggplot(., aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+  geom_point(alpha = 0.8, cex = 0.1) +
+  facet_wrap(~ Genes, ncol = 10) +
+  scale_color_viridis_c() +
+  theme_dark()+
+  theme(legend.position = "top")
+
+visReduction_feature (object = cd8_10x,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "RNA",
+    objSlot = "data",
+    # dataType = "data",
+    nrow = 5,
+    ncol = 10,
+    features = gg,
+    textSize = 8,
+    pointSize = 0.4,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+dev.off()
+
+```
+
+
+### Color UMAP based on scores
+```{r}
+
+pdf(paste0(figPath, "UMAP_Zhang10X_CD8_Score_20201005.pdf"),
+    height = 4, width = 4)
+
+cell_attrsCD8_10x %>%
+  ggplot(.,
+         aes_string(x = "UMAP_1",
+                    y = "UMAP_2",
+                    color = "Sub_Cluster")) +
+  geom_point(alpha = 0.9, cex = 0.5) +
+  scale_color_manual(values = cd8Cols) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+
+for(i in anns){
+  print(
+    cell_attrsCD8_10x %>%
+    ggplot(.,
+           aes_string(x = "UMAP_1",
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.9, cex = 0.5) +
+  scale_color_manual(values = cols)+
+  theme_minimal() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+  )
+}
+
+for(i in c(scoreNames, "nCount_RNA", "nFeature_RNA", "percent.mt")) {
+  print(
+    cell_attrsCD8_10x %>%
+      arrange(!!sym(i)) %>%
+    ggplot(.,
+           aes_string(x = "UMAP_1",
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.9, cex = 0.5) +
+  scale_color_viridis_c() +
+  theme_dark() +
+          theme(
+        legend.spacing = unit(1.5, "mm"),
+        legend.position = "top",
+        legend.key.width = unit(0.9, "cm"),
+        legend.title = element_text(size = 8, face = "italic"),
+        legend.text = element_text(size = 8)
+      )
+  )
+}
+dev.off()
+```
+
+
+### Boxplot MSI
+```{r}
+# cell_attrsCD8_10x <- nk_10x[[]]
+getSigs <- c("CD4_Exh",
+             "CD8_Exh",
+             "NK_Exh",
+             "CD4_Trm",
+             "CD8_Trm",
+             "NK_Trm",
+             
+             "CD4_Exh_CancerPass",
+             "CD8_Exh_CancerPass",
+             "NK_Exh_CancerPass",
+             "CD4_Trm_CancerPass",
+             "CD8_Trm_CancerPass",
+             "NK_Trm_CancerPass", 
+             
+             "All_Exh",
+             "All_Trm"
+             )
+
+pdf(
+  paste0(figPath, "Boxplot_Zhang10X_MSI_CD8_ExhTrmScores.pdf"),
+  height = 4,
+  width = 3.5
+)
+for (s in getSigs) {
+  print(ggplot(cell_attrsCD8_10x, aes_string(x = "MSI", y = s)) +
+          geom_boxplot() +
+          theme_bw())
+}
+dev.off()
+```
+
+## ProjectR on PCA loadings of markers
+
+```{r}
+library(projectR)
+
+ZhangMarkerLoadings <- readRDS(
+        paste0(outPath, "ZhangMarkerPCALoadings_TrmExh_Markers_CD8_20200928.RDS"))
+
+##------- TrmExh
+exprData10xTrmExh <- exprData10x[rownames(exprData10x) %in% rownames(ZhangMarkerLoadings), ]
+
+# exprData10xTrmExh <- log2(exprData10xTrmExh + 1)
+# currentLoad <- ZhangMarkerLoadings[
+#   rownames(exprData10xTrmExh), 1:10]
+
+proj10xTrmExh <- projectR(exprData10xTrmExh, ZhangMarkerLoadings)
+
+rownames(proj10xTrmExh) <- paste0(rownames(proj10xTrmExh), "_ProjectR")
+```
+
+
+```{r}
+cellAnnot <- cell_attrsCD8_10x
+  
+cellAnnot <-
+  data.frame(cellAnnot, 
+             t(proj10xTrmExh))
+```
+
+### Plot PCA using ProjectR PCs, coloured by scores
+```{r}
+
+pdf(
+  paste0(figPath, "PCA_Zhang10X_ProjectR_CD8_TrmExhPCs_20201005.pdf"),
+  height = 5,
+  width = 4.7
+)
+
+ggplot(cellAnnot, aes(PC_1_ProjectR, PC_2_ProjectR, color = Sub_Cluster))+
+  geom_point(alpha = 0.9, size = 0.8) +
+    scale_color_manual(values = cd8Cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+    guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+ggplot(cellAnnot, aes(PC_1_ProjectR, PC_2_ProjectR, color = Tissue))+
+  geom_point(alpha = 0.9, size = 0.8) +
+    scale_color_manual(values = cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+    guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+ggplot(cellAnnot, aes(PC_1_ProjectR, PC_2_ProjectR, color = MSI))+
+  geom_point(alpha = 0.9, size = 0.8) +
+    scale_color_manual(values = cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+    guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+ggplot(cellAnnot, aes(PC_1_ProjectR, PC_2_ProjectR, color = Sample))+
+  geom_point(alpha = 0.9, size = 0.8) +
+    scale_color_manual(values = cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+    guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+cellAnnot %>%
+  arrange(CD8_Trm) %>%
+  ggplot(., aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Trm)) +
+  geom_point(alpha = 0.9, size = 0.8) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+cellAnnot %>%
+  arrange(CD8_Exh) %>%
+  ggplot(., aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Exh)) +
+  geom_point(alpha = 0.9, size = 0.8) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+dev.off()
+```
+
+
+## UMAP/PCA based on markers
+
+```{r}
+gg <-  c(CD8_ExhMarker, CD8_TrmMarker)
+
+CD8ExhTrm_10x <- RunPCA(cd8_10x, features = gg, verbose = F)
+
+
+CD8ExhTrm_10x <- FindNeighbors(CD8ExhTrm_10x, reduction = "pca", dims = 1:5)
+CD8ExhTrm_10x <- FindClusters(CD8ExhTrm_10x, resolution = 0.4)
+
+# CD8ExhTrm_v <- RunUMAP(CD8ExhTrm_v, features = gg, min.dist = 0.15, n.neighbors = 10)
+CD8ExhTrm_10x <- RunUMAP(CD8ExhTrm_10x, reduction = "pca", 
+          dims = 1:5,  min.dist = 0.4, n.neighbors = 50)
+
+DimPlot(CD8ExhTrm_10x, reduction = "umap")
+DimPlot(CD8ExhTrm_10x, reduction = "umap", group.by = "Sub_Cluster")
+DimPlot(CD8ExhTrm_10x, reduction = "umap", group.by = "Tissue")
+FeaturePlot(CD8ExhTrm_10x, reduction = "umap", features = "CD8_Exh")
+FeaturePlot(CD8ExhTrm_10x, reduction = "umap", features = "CD8_Trm")
+```
+
+```{r}
+anns <- c("seurat_clusters", "Tissue", "Sample", "MSI")
+
+pdf(
+  paste0(figPath, "UMAP_PCA_Zhang10X_CD8_TrmExhMarkers_20201005_CellAnnot.pdf"),
+  height = 4.5,
+  width = 4.2
+)
+
+DimPlot(CD8ExhTrm_10x, 
+                reduction = "umap", 
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+for(a in anns){
+  print(DimPlot(CD8ExhTrm_10x, 
+                reduction = "umap", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3))))
+}
+
+FeaturePlot(CD8ExhTrm_10x,
+            "CD8_Exh",
+            pt.size = 0.7,
+            order = T) +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+FeaturePlot(CD8ExhTrm_10x,
+            "CD8_Trm",
+            pt.size = 0.7,
+            order = T) +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+
+
+DimPlot(CD8ExhTrm_10x, 
+                reduction = "pca", 
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+for(a in anns){
+  print(DimPlot(CD8ExhTrm_10x, 
+                reduction = "pca", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3))))
+}
+
+FeaturePlot(CD8ExhTrm_10x,
+            "CD8_Exh",
+            pt.size = 0.7,
+            order = T, 
+            reduction = "pca") +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+FeaturePlot(CD8ExhTrm_10x,
+            "CD8_Trm",
+            pt.size = 0.7,
+            order = T, 
+            reduction = "pca") +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+dev.off()
+
+
+
+pdf(
+  paste0(figPath, "UMAP_Zhang10X_Blend_ExhTrmMarkers_NK_20201005.pdf"),
+  height = 3,
+  width = 12
+)
+FeaturePlot(CD8ExhTrm_10x,
+            features = c("CD8_Trm", "CD8_Exh"),
+            pt.size = 0.7,
+            order = T, 
+            blend = T,
+            cols =  c("grey90", "orange2", "blue"),
+            reduction = "umap") 
+
+FeaturePlot(CD8ExhTrm_10x,
+            features = c("CD8_Trm", "CD8_Exh"),
+            pt.size = 0.7,
+            order = T, 
+            blend = T,
+            cols =  c("grey90", "orange2", "blue"),
+            reduction = "pca") 
+dev.off()
+```
+
+
+
+## Slingshot
+
+```{r}
+library(slingshot)
+
+cd8_10x$seurat_clusters_markers <- CD8ExhTrm_10x$seurat_clusters
+
+cd8.sce10x <- as.SingleCellExperiment(cd8_10x)
+
+reducedDims(cd8.sce10x) <-
+  SimpleList(
+    PCA_ProjectR = t(proj10xTrmExh[1:2,]),
+    # CoGAPS_ProjectR = t(proj10x_cg[1:2,]),
+    
+    PCA_Seurat = cd8_10x@reductions[["pca"]]@cell.embeddings,
+    UMAP_Seurat = cd8_10x@reductions[["umap"]]@cell.embeddings,
+    
+    UMAP_markers = CD8ExhTrm_10x@reductions[["umap"]]@cell.embeddings,
+    PCA_markers = CD8ExhTrm_10x@reductions[["pca"]]@cell.embeddings, 
+    
+    # CuratedScores = as.matrix(colData(cd8.sce10x)[, c("CuratedTrmGenes", "CuratedExhGenes")]),
+    FinalScores = as.matrix(colData(cd8.sce10x)[, c("CD8_Trm", "CD8_Exh")]),
+    PassScores = as.matrix(colData(cd8.sce10x)[, c("CD8_Trm_CancerPass", "CD8_Exh_CancerPass")])
+  )
+
+saveRDS(cd8.sce10x, paste0(outPath, "Zhang10X_CD8_SingleCellExperiment_20201005.RDS"))
+```
+
+
+#### Slingshot on Seurat
+```{r}
+# slingPseudotime_PCA_Seurat <-
+#   list(
+#     slingPseudotime_1 = cd8.sce10x$slingPseudotime_1,
+#     SlingshotDataSet =
+#       SlingshotDataSet(cd8.sce10x)
+#   )
+
+cd8.sce10x <- slingshot(cd8.sce10x, clusterLabels = 'seurat_clusters', reducedDim = 'UMAP_Seurat')
+
+summary(cd8.sce10x$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(cd8.sce10x$slingPseudotime_1, breaks=100)]
+
+exhCol <- viridis::viridis(100)[cut(cd8.sce10x$CD8_Exh, breaks=100)]
+trmCol <- viridis::viridis(100)[cut(cd8.sce10x$CD8_Trm, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_Zhang10X_CD8_SeuratUMAP_ClusterSeurat.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(cd8.sce10x)$UMAP_Seurat,
+  col = cd8Cols[as.factor(cd8.sce10x$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("bottomright", legend = unique(as.factor(cd8.sce10x$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce10x$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$UMAP_Seurat,
+  col = exhCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$UMAP_Seurat,
+  col = trmCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$UMAP_Seurat,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+#### Slingshot based on markers
+```{r}
+# ERROR: system is computationally singular: reciprocal condition number = 5.33298e-18
+# cd8.sce10x <- slingshot(cd8.sce10x, clusterLabels = 'seurat_clusters_markers', reducedDim = 'PCA_markers')
+# 
+# summary(cd8.sce10x$slingPseudotime_1)
+# 
+# colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+# plotcol <- colors[cut(cd8.sce10x$slingPseudotime_1, breaks=100)]
+# 
+# pdf(paste0(figPath, "Trajectory_SlingShot_Zhang10X_CD8_MarkersPCA_ClusterMarkers.pdf"), 
+#     height = 5, width = 5)
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$PCA_markers,
+#   col = cd8Cols[as.factor(cd8.sce10x$Sub_Cluster)],
+#   cex = 0.5, pch = 16,
+#   asp = 1
+# )
+# legend("topright", legend = unique(as.factor(cd8.sce10x$Sub_Cluster)),
+#        col = cd8Cols[unique(as.factor(cd8.sce10x$Sub_Cluster))], pch = 19, cex = 0.5)
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$PCA_markers,
+#   col = exhCol,
+#   cex = 0.5, pch = 16,
+#   asp = 1, main = "Exh score"
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$PCA_markers,
+#   col = trmCol,
+#   cex = 0.5, pch = 16,
+#   asp = 1, main = "Trm score"
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$PCA_markers,
+#   col = plotcol,
+#   pch = 16,
+#   asp = 1,
+#   cex = 0.5
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# dev.off()
+
+```
+
+#### Slingshot on scores
+```{r}
+## ERROR: system is computationally singular: reciprocal condition number = 3.25488e-34
+# cd8.sce10x <- slingshot::slingshot(cd8.sce10x,
+#                                 clusterLabels = 'seurat_clusters_markers',
+#                                 reducedDim = 'FinalScores')
+# summary(cd8.sce10x$slingPseudotime_1)
+# 
+# colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(200)
+# plotcol <- colors[cut(cd8.sce10x$slingPseudotime_1, breaks=200)]
+# 
+# 
+# pdf(paste0(figPath, "Trajectory_SlingShot_Zhang10X_CD8_FinalScores_ClusterMarkers.pdf"), 
+#     height = 5, width = 5)
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$FinalScores,
+#   col = cd8Cols[as.factor(cd8.sce10x$Sub_Cluster)],
+#   cex = 0.7, pch = 16,
+#   asp = 1
+# )
+# legend("topright", legend = unique(as.factor(cd8.sce10x$Sub_Cluster)),
+#        col = cd8Cols[unique(as.factor(cd8.sce10x$Sub_Cluster))], pch = 19, cex = 0.7)
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$FinalScores,
+#   col = exhCol,
+#   cex = 0.7, pch = 16,
+#   asp = 1, main = "Exh score"
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$FinalScores,
+#   col = trmCol,
+#   cex = 0.7, pch = 16,
+#   asp = 1, main = "Trm score"
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# plot(
+#   reducedDims(cd8.sce10x)$FinalScores,
+#   col = plotcol,
+#   pch = 16,
+#   asp = 1,
+#   cex = 0.7
+# )
+# lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+# 
+# dev.off()
+
+```
+
+
+
+#### Slingshot on projectR
+
+```{r}
+cd8.sce10x <- slingshot(cd8.sce10x, 
+                        clusterLabels = 'seurat_clusters_markers', 
+                        reducedDim = 'PCA_ProjectR')
+# cd8.sce10x <- slingshot(cd8.sce10x, 
+#                         clusterLabels = 'seurat_clusters_markers', 
+#                         reducedDim = 'CoGAPS_ProjectR')
+
+summary(cd8.sce10x$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(cd8.sce10x$slingPseudotime_1, breaks=100)]
+
+
+pdf(
+  paste0(
+    figPath,
+    "Trajectory_SlingShot_Zhang10X_CD8_ProjectrPCA_ClusterMarkers.pdf"
+  ),
+  height = 5,
+  width = 5
+)
+
+plot(
+  reducedDims(cd8.sce10x)$PCA_ProjectR,
+  col = cd8Cols[as.factor(cd8.sce10x$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(cd8.sce10x$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce10x$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$PCA_ProjectR,
+  col = trmCol,
+  pch = 16,
+  asp = 1,
+   cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$PCA_ProjectR,
+  col = exhCol,
+  pch = 16,
+  asp = 1,
+   cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce10x)$PCA_ProjectR,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce10x), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+### Save CD8 data after UMAP/Scores
+```{r}
+saveRDS(cd8_10x, file = paste0(outPath, "Zhang_10X_SeuratObj_CD8_20201005_UMAP_Scores.RDS"))
+```
+
+
+
+# Vries data
+33694 features across 1079
+```{r}
+vriesPath <- "../output/Vries/"
+vv0 <- readRDS(paste0(vriesPath, "Vries_CRC_SeuratObject.RDS"))
+```
+
+## Subset to CD8 and Others and Prolif:
+```{r}
+getCells <-
+  c(
+    # "ILC/NK cells",
+    "CD8 T cells",
+    # "CD4 T cells",
+    "Proliferating cells",
+    "Others"
+  )
+
+v <- vv0[, vv0$CellType %in% getCells]
+
+grep("^MT-", rownames(v), value = T)
+
+v[["percent.mt"]] <- PercentageFeatureSet(v, pattern = "^MT-")
+
+```
+
+
+### QC
+```{r, fig.height = 4, fig.width = 9, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <- FeatureScatter(v, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "CellType")
+plot2 <- FeatureScatter(v, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "CellType")
+plot1 + plot2
+
+```
+
+### Filter cells 
+325 cells
+```{r}
+## remove 1 cells --> 184 cells
+v <- v[, v$nCount_RNA < 15000]
+```
+
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(v, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 1, group.by = "CellType", pt.size = 0)
+```
+
+
+
+### Normalise using SCTransform
+Note that running `SCTransform` function in the Seurat package uses `sctransform::vst` function, and will replace the below three steps:
+
+- NormalizeData, 
+- ScaleData,  
+- FindVariableFeatures
+
+This will save the transformed data set into the *SCT* assay, and intermediate results are saved in *misc* slot of new assay. The other changes are: *counts* being (corrected) counts, *data* being log1p(counts), *scale.data* being pearson residuals.
+
+To access different data slots after normalisation:
+
+- `ss[["SCT"]]@scale.data`: it has residuals (normalized values), and is used directly as input to PCA. Note that to save memory, we store these values only for variable genes, by setting the return.only.var.genes = TRUE.
+- `ss[["SCT"]]@counts`: it has ‘corrected’ UMI counts
+- `ss[["SCT"]]@data`: it has log-normalized versions of the corrected counts --> for visualisation
+
+
+The data slot is the default used for FeaturePlot, VlnPlot, FindConservedMarkers and the scale.data slot is the default for DoHeatmap, and we use the defaults. Typically scaled data (mean-centered, sd-adjusted) is only used for heatmaps and the rest, especially differential expression, you want to do on normalized count values. DO not re-run SCTransform on the integrated data, but running it on the RNA assay should be fine
+
+```{r, warning = F, message = F}
+
+library(sctransform)
+
+v <- SCTransform(
+  object = v,
+  assay = "RNA",
+  new.assay.name = "SCT",
+  do.correct.umi = TRUE,
+  ncells = NULL,
+  variable.features.n = 5000,
+  # variable.features.rv.th = 1.3,
+  vars.to.regress = "percent.mt",  ## NULL by default
+  do.scale = FALSE,
+  do.center = TRUE,
+  conserve.memory = FALSE,
+  return.only.var.genes = TRUE,
+  seed.use = 20201005,
+  verbose = FALSE
+)
+```
+
+
+
+```{r, fig.width = 9, fig.height = 4, fig.cap = "Mean-variance relationship after normalisation, annotated for highly variable genes"}
+gg <- head(VariableFeatures(v), 15)
+plot1 <- VariableFeaturePlot(v)
+plot2 <- LabelPoints(plot = plot1, points = gg, repel = TRUE)
+plot2
+# or:
+# CombinePlots(list(plot1,plot2))
+```
+
+### Dimension Reduction
+#### PCA plots
+Read counts are subject to differences in capture efficiency and sequencing depth between cells (Stegle et al., 2015). The principal component analysis is used to explore the library size effect in the data set.
+```{r PCA, cache = T}
+v <- RunPCA(v, verbose = FALSE)
+```
+
+#### Select number of dimensions
+```{r}
+print(v[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+```{r, fig.height = 5, fig.width = 7, fig.cap = "Dimension loadings from PCA"}
+VizDimLoadings(v, dims = 1:2, reduction = "pca")
+```
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(v, dims = 1:30, cells = 300, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(v, ndims = 40)
+```
+
+```{r}
+
+DimPlot(v, reduction = "pca", group.by = "CellType", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+
+```
+### Clustering and UMAP
+
+```{r}
+v <- FindNeighbors(v, dims = 1:20)
+v <- FindClusters(v, resolution = 0.5, random.seed = 20201005)
+v <- RunUMAP(v, dims = 1:20, seed.use = 20201005)
+
+DimPlot(v, reduction = "umap")
+DimPlot(v, reduction = "umap", group.by = "CellType")
+```
+
+
+## RNA slot
+```{r}
+vRNA <- v
+
+DefaultAssay(vRNA) <- "RNA"
+# Normalize RNA data for visualization purposes
+vRNA <- NormalizeData(vRNA, verbose = FALSE)
+vRNA <- FindVariableFeatures(vRNA, selection.method = "vst", nfeatures = 1000)
+all.genes <- rownames(vRNA)
+vRNA <- ScaleData(vRNA, features = all.genes)
+
+vRNA <- RunPCA(vRNA, features = VariableFeatures(object = vRNA), verbose = F)
+ElbowPlot(vRNA, ndims = 40)
+
+vRNA <- FindNeighbors(vRNA, dims = 1:20)
+vRNA <- FindClusters(vRNA, resolution = 0.5)
+vRNA <- RunUMAP(vRNA, dims = 1:20)
+
+DimPlot(vRNA, reduction = "umap")
+DimPlot(vRNA, reduction = "umap", group.by = "CellType")
+```
+
+### Score NK cells
+Decide whether use SCT or RNA slots.
+```{r}
+vEXpr <- as.matrix(GetAssayData(vRNA, slot = "data", assay = "RNA"))
+```
+
+#### Score SCT
+```{r, message = F, warning = F}
+
+exprDataV <- as.matrix(GetAssayData(v, slot = "data", assay = "SCT"))
+
+rd_v <- rankGenes(exprDataV)
+##---------
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd_v, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+
+colnames(scoresCollins) <- unique(collinsSig$Signature)
+
+rownames(scoresCollins) <- colnames(rd_v)
+
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd_v, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- names(selImmuneSigs)
+                              
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer"
+
+rownames(scoresImm) <- colnames(rd_v)
+
+v@meta.data <- data.frame(v@meta.data , scoresCollins)
+v@meta.data  <- data.frame(v@meta.data , scoresImm)
+
+
+scoreNames <- c(colnames(scoresImm), colnames(scoresCollins))
+scoreNames <- scoreNames[order(scoreNames)]
+
+```
+
+
+#### Score RNA
+```{r, message = F, warning = F}
+
+rd_v <- rankGenes(vEXpr)
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd_v, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresCollins) <- paste0(as.character(unique(collinsSig$Signature)), "_RNA")
+
+rownames(scoresCollins) <- colnames(rd_v)
+
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd_v, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- paste0(names(selImmuneSigs), "_RNA")
+                              
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer_RNA"
+
+rownames(scoresImm) <- colnames(rd_v)
+
+vRNA@meta.data <- data.frame(vRNA@meta.data , scoresCollins)
+vRNA@meta.data  <- data.frame(vRNA@meta.data , scoresImm)
+
+scoreNamesRNA <- c(colnames(scoresImm), colnames(scoresCollins))
+scoreNamesRNA <- scoreNamesRNA[order(scoreNamesRNA)]
+```
+
+
+
+
+```{r}
+pdf(paste0(figPath, "UMAP_Vries_CD8.pdf"), height = 3.8, width = 4)
+# pdf(paste0(figPath, "UMAP_Vries_RNA_CD8.pdf"), height = 3.8, width = 4)
+
+DimPlot(v, reduction = "umap") +
+# DimPlot(vRNA, reduction = "umap") +
+  theme_minimal() +
+  theme(legend.position = "top") + 
+  guides(color = guide_legend(
+    nrow=1, 
+    override.aes = list(size=3)))
+
+DimPlot(v, reduction = "umap",
+# DimPlot(vRNA, reduction = "umap",
+        group.by = "CellType") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=1, 
+    override.aes = list(size=3)))
+
+FeaturePlot(v, "CD8B")
+FeaturePlot(v, "CD8A")
+FeaturePlot(v, "CD3E")
+FeaturePlot(v, "CD3G")
+FeaturePlot(v, "CD3D")
+FeaturePlot(v, "CD4")
+FeaturePlot(v, "KLRD1")
+FeaturePlot(v, "KLRC1")
+FeaturePlot(v, "NCAM1")
+FeaturePlot(v, "NCR1")
+FeaturePlot(v, "MKI67")
+
+
+dev.off()
+```
+
+
+#### Color UMAP for markers
+
+```{r}
+cell_attrsV <- v[[]]
+currentRedData <- v@reductions[["umap"]]@cell.embeddings
+
+cell_attrsV$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsV$UMAP_2 <- currentRedData[, "UMAP_2"]
+
+
+
+cell_attrsRNA <- vRNA[[]]
+currentRedData <- vRNA@reductions[["umap"]]@cell.embeddings
+
+cell_attrsRNA$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsRNA$UMAP_2 <- currentRedData[, "UMAP_2"]
+```
+
+```{r}
+## do not exist in the data: "GPR15" "RBKS"  "GFPT2"
+
+## If using SCT
+# exprDataV <- as.matrix(GetAssayData(v, slot = "data", assay = "SCT"))
+
+## If using RNA
+## vEXpr
+
+
+gg <-  CD8_ExhMarker
+# gg <-  CD8_TrmMarker
+
+gg <- gg[gg %in% rownames(vRNA)]
+# gg <- gg[gg %in% rownames(v)]
+
+# exprDataV_Genes <- exprDataV[gg,]
+exprDataV_Genes <- vEXpr[gg,]
+
+exprDataV_Genes <- data.frame(cell_attrsRNA, data.frame(t(exprDataV_Genes), check.names = F), check.names = F)
+
+# exprDataV_Genes <-
+  # data.frame(cell_attrsV, data.frame(t(exprDataV_Genes)), check.names = F)
+
+
+exprLongV <- exprDataV_Genes %>% 
+  pivot_longer(
+    values_to = "Expression",
+    names_to = "Genes" ,
+    # cols = 101:ncol(exprDataV_Genes)
+    cols = 100:ncol(exprDataV_Genes)
+  ) %>% 
+  data.frame(check.names = F)
+
+## Change RNA and SCT in the pdf names below
+pdf(
+  paste0(figPath, "UMAP_Vries_CD8_Exh_RNA_20201005.pdf"),
+  # height = 11,
+  # height = 8,
+  height = 5,
+  width = 15
+)
+exprLongV %>%
+  group_by(Genes) %>%
+  arrange(Expression) %>%
+ggplot(., aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+  geom_point(alpha = 0.8, cex = 0.7) +
+  facet_wrap(~ Genes, ncol = 10) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top")
+  
+
+visReduction_feature (
+  # object = v,
+  object = vRNA,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "RNA",
+    # objAssay = "SCT",
+    objSlot = "data",
+    nrow = 3,
+    # nrow = 7,
+    ncol = 10,
+    features = gg,
+    textSize = 8,
+    pointSize = 0.6,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+
+dev.off()
+```
+
+#### Color UMAP for scores
+
+```{r}
+scoreNames <- scoreNames[order(scoreNames)]
+
+pdf(paste0(figPath, "UMAP_Vries_ScoresRNA_CD8_20201005.pdf"),
+    height = 4.5, width = 4.5)
+
+for(i in scoreNamesRNA){
+# for(i in scoreNames){
+  print(
+    cell_attrsRNA %>%
+    # cell_attrsV %>%
+      arrange(!!sym(i)) %>%
+    ggplot(., 
+           aes_string(x = "UMAP_1", 
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.9, cex = 1.3) +
+  scale_color_viridis_c() +
+  theme_dark() +
+          theme(
+        legend.spacing = unit(1.5, "mm"),
+        legend.position = "top",
+        legend.key.width = unit(0.9, "cm"), 
+        legend.title = element_text(size = 8, face = "italic"),
+        legend.text = element_text(size = 8)
+      )
+  )
+}
+dev.off()
+```
+
+
+### PCA/UMAP using marker genes
+```{r}
+gg <-  c(CD8_ExhMarker, CD8_TrmMarker)
+CD8ExhTrm_v <- RunPCA(v, features = gg, verbose = F)
+
+CD8ExhTrm_v <- FindNeighbors(CD8ExhTrm_v, reduction = "pca", dims = 1:10)
+CD8ExhTrm_v <- FindClusters(CD8ExhTrm_v, resolution = 0.5)
+
+# CD8ExhTrm_v <- RunUMAP(CD8ExhTrm_v, features = gg, min.dist = 0.15, n.neighbors = 10)
+CD8ExhTrm_v <- RunUMAP(CD8ExhTrm_v, reduction = "pca", 
+          dims = 1:10,  min.dist = 0.2, n.neighbors = 15)
+
+DimPlot(CD8ExhTrm_v, reduction = "umap")
+DimPlot(CD8ExhTrm_v, reduction = "umap", group.by = "CellType")
+FeaturePlot(CD8ExhTrm_v, reduction = "umap", features = "CD8_Exh")
+FeaturePlot(CD8ExhTrm_v, reduction = "umap", features = "CD8_Trm")
+```
+
+If using RNA slot
+```{r}
+
+CD8ExhTrm_vRNA <- RunPCA(vRNA, features = gg, verbose = F)
+
+CD8ExhTrm_vRNA <- FindNeighbors(CD8ExhTrm_vRNA, reduction = "pca", dims = 1:10)
+CD8ExhTrm_vRNA <- FindClusters(CD8ExhTrm_vRNA, resolution = 0.5)
+
+# CD8ExhTrm_v <- RunUMAP(CD8ExhTrm_v, features = gg, min.dist = 0.15, n.neighbors = 10)
+CD8ExhTrm_vRNA <- RunUMAP(CD8ExhTrm_vRNA, reduction = "pca", 
+          dims = 1:10,  min.dist = 0.2, n.neighbors = 15)
+
+DimPlot(CD8ExhTrm_vRNA, reduction = "umap")
+DimPlot(CD8ExhTrm_vRNA, reduction = "umap", group.by = "CellType")
+FeaturePlot(CD8ExhTrm_vRNA, reduction = "umap", features = "CD8_Exh_RNA")
+FeaturePlot(CD8ExhTrm_vRNA, reduction = "umap", features = "CD8_Trm_RNA")
+```
+
+
+```{r}
+anns <- c("seurat_clusters", "CellType")
+
+pdf(
+  paste0(figPath, "UMAP_Vries_CD8_ExhTrm_RNA_20201005_CellAnnot.pdf"),
+  # paste0(figPath, "UMAP_Vries_CD8_ExhTrm_SCT_20201005_CellAnnot.pdf"),
+  height = 4.3,
+  width = 4
+)
+
+for(a in anns){
+  print(DimPlot(CD8ExhTrm_vRNA,
+  # print(DimPlot(CD8ExhTrm_v,
+                reduction = "umap", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3))))
+}
+
+FeaturePlot(
+  CD8ExhTrm_vRNA,
+  # CD8ExhTrm_v,
+  # "CD8_Exh",
+  "CD8_Exh_RNA",
+  pt.size = 1,
+  order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top")
+
+
+FeaturePlot(
+  CD8ExhTrm_vRNA,
+            # CD8ExhTrm_v,
+            # "CD8_Exh_CancerPass",
+            "CD8_Exh_CancerPass_RNA",
+            pt.size = 1,
+            order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top")
+
+
+FeaturePlot(
+  CD8ExhTrm_vRNA,
+  # CD8ExhTrm_v,
+  #           "CD8_Trm",
+            "CD8_Trm_RNA",
+            pt.size = 1,
+            order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top") 
+
+FeaturePlot(
+  CD8ExhTrm_vRNA,
+  # CD8ExhTrm_v,
+  #           "CD8_Trm_CancerPass",
+            "CD8_Trm_CancerPass_RNA",
+            pt.size = 1,
+            order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top")
+
+
+dev.off()
+
+
+```
+
+
+```{r}
+pdf(
+  paste0(figPath, "UMAP_PCA_Vries_CD8_Blend_ExhTrm_SCT_20201005.pdf"),
+  # paste0(figPath, "UMAP_PCA_Vries_CD8_Blend_ExhTrm_RNA_20201005.pdf"),
+  height = 3,
+  width = 12
+  # height = 3,
+  # width = 12
+)
+FeaturePlot(
+  # CD8ExhTrm_vRNA,
+  CD8ExhTrm_v,
+  # features = c("CD8_Trm_RNA", "CD8_Exh_RNA"),
+  features = c("CD8_Trm", "CD8_Exh"),
+  pt.size = 1.5,
+  order = T,
+  blend = T,
+  cols =  c("grey90", "orange2", "blue"),
+  reduction = "umap"
+)
+
+FeaturePlot(
+  # CD8ExhTrm_vRNA,
+  CD8ExhTrm_v,
+  # features = c("CD8_Trm_RNA", "CD8_Exh_RNA"),
+  features = c("CD8_Trm", "CD8_Exh"),
+  pt.size = 1.5,
+  order = T,
+  blend = T,
+  cols =  c("grey90", "orange2", "blue"), 
+  reduction = "pca"
+)
+
+# FeaturePlot(
+#   CD8ExhTrm_vRNA,
+#   # CD8ExhTrm_v,
+#   features = c("CD8_Trm_CancerPass_RNA", "CD8_Exh_CancerPass_RNA"),
+#   # features = c("NK_Trm_CancerPass", "NK_Exh_CancerPass"),
+#   pt.size = 1.5,
+#   order = T,
+#   blend = T,
+#   cols =  c("grey90", "orange2", "blue")
+# ) 
+dev.off()
+```
+
+
+
+```{r}
+###----- Heatmap
+cellCols_v <- cols[1:length(unique(vv0$CellType))]
+names(cellCols_v) <- unique(vv0$CellType)
+
+cd8Cols_v <- cellCols_v[grepl("CD8", names(cellCols_v))|
+                         grepl("Other", names(cellCols_v))|
+                          grepl("Prolif", names(cellCols_v))]
+
+
+# sampleAnnHm <-
+#   ComplexHeatmap::HeatmapAnnotation(CellType = as.character(v$CellType),
+#                                     col = list(CellType = cd8Cols_v))
+# 
+# 
+# 
+# pdf(paste0(figPath, "Heatmap_Vries_ExhTrmMarkers_CanPass_SCT_NK_20200902.pdf"), height = 7, width = 8)
+# # pdf(paste0(figPath, "Heatmap_Vries_ExhTrmMarkers_CanPass_RNA_NK_20200902.pdf"), height = 7, width = 8)
+# ComplexHeatmap::Heatmap(
+#   exprDataV[rownames(exprDataV) %in% pctData_nkTrmPass$gene, ],
+#   # vEXpr[rownames(vEXpr) %in% pctData_nkTrmPass$gene, ],
+#   show_column_names = F,
+#   top_annotation = sampleAnnHm,
+#   col = viridis::plasma(100),
+#   name = "NK_Trm"
+# )
+# 
+# ComplexHeatmap::Heatmap(
+#   exprDataV[rownames(exprDataV) %in% pctData_nkExhPass$gene, ],
+#  # vEXpr[rownames(vEXpr) %in% pctData_nkExhPass$gene, ],
+#   show_column_names = F,
+#   top_annotation = sampleAnnHm,
+#   col = viridis::plasma(100),
+#   name = "NK_Exh"
+# )
+# 
+# ComplexHeatmap::Heatmap(
+#   exprDataV[rownames(exprDataV) %in% NK_TrmPass, ],
+#   # vEXpr[rownames(vEXpr) %in% NK_TrmPass, ],
+#   show_column_names = F,
+#   top_annotation = sampleAnnHm,
+#   col = viridis::plasma(100),
+#   name = "NK_TrmPass"
+# )
+# 
+# ComplexHeatmap::Heatmap(
+#   exprDataV[rownames(exprDataV) %in% NK_ExhPass, ],
+#   # vEXpr[rownames(vEXpr) %in% NK_ExhPass, ],
+#   show_column_names = F,
+#   top_annotation = sampleAnnHm,
+#   col = viridis::plasma(100),
+#   name = "NK_ExhPass"
+# )
+# 
+# dev.off()
+```
+
+
+## ProjectR on PCA
+```{r}
+library(projectR)
+
+##------- TrmExh
+
+gg <- c(CD8_ExhMarker, CD8_TrmMarker)
+exprDataVTrmExh <- exprDataV[rownames(exprDataV) %in% gg, ]
+
+currentLoad <- ZhangMarkerLoadings[, 1:10]
+
+projVTrmExh <- projectR(exprDataVTrmExh, currentLoad)
+rownames(projVTrmExh) <- paste0(rownames(projVTrmExh), "_ProjectR")
+
+
+
+v$seurat_clusters_markers <- CD8ExhTrm_v$seurat_clusters
+cellAnnot <- v[[]]
+cellAnnot <- data.frame(cellAnnot, t(projVTrmExh), check.names = F)
+
+```
+
+If using RNA slot:
+
+```{r}
+vEXprTrmExh <- vEXpr[rownames(vEXpr) %in% gg, ]
+
+currentLoad <- ZhangMarkerLoadings[, 1:10]
+
+projVTrmExhRNA <- projectR(vEXprTrmExh, currentLoad)
+rownames(projVTrmExhRNA) <- paste0(rownames(projVTrmExhRNA), "_ProjectR")
+
+
+vRNA$seurat_clusters_markers <- CD8ExhTrm_vRNA$seurat_clusters
+cellAnnotRNA <- vRNA[[]]
+cellAnnotRNA <- data.frame(cellAnnotRNA, t(projVTrmExhRNA), check.names = F)
+
+```
+
+
+
+
+### PCA for ProjectR PCs, coloured by scores
+```{r}
+
+pdf(
+  # paste0(figPath, "PCA_Vries_ProjectR_CD8_TrmExh_SCT_20201005.pdf"),
+  paste0(figPath, "PCA_Vries_ProjectR_CD8_TrmExh_RNA_20201005.pdf"),
+  height = 4.5,
+  width = 4.5
+)
+ggplot(
+  # cellAnnot,
+  cellAnnotRNA,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = CellType)) +
+  geom_point(alpha = 0.9, size = 1.2) +
+  scale_color_manual(values = cd8Cols_v) +
+  theme_bw() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+
+cellAnnotRNA %>%
+  # cellAnnot %>%
+  # arrange(CD8_Trm) %>%
+  arrange(CD8_Trm_RNA) %>%
+ggplot(.
+  ,
+  aes(PC_1_ProjectR, PC_2_ProjectR, 
+      color = CD8_Trm_RNA
+      # color = CD8_Trm
+      )) +
+  geom_point(alpha = 0.9, size = 1.2) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+cellAnnotRNA %>%
+  # cellAnnot %>%
+  # arrange(CD8_Trm_CancerPass) %>% 
+  arrange(CD8_Trm_CancerPass_RNA) %>%
+ggplot(.,
+  aes(PC_1_ProjectR, PC_2_ProjectR, 
+      color = CD8_Trm_CancerPass_RNA
+      # color = CD8_Trm_CancerPass
+      )) +
+  geom_point(alpha = 0.9, size = 1.2) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+
+cellAnnotRNA %>%
+  # cellAnnot %>%
+  # arrange(CD8_Exh) %>% 
+  arrange(CD8_Exh_RNA) %>%
+ggplot(.,
+  aes(PC_1_ProjectR, PC_2_ProjectR, 
+      color = CD8_Exh_RNA
+      # color = CD8_Exh
+      )) +
+  geom_point(alpha = 0.9, size = 1.2) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+
+cellAnnotRNA %>%
+  # cellAnnot %>%
+  # arrange(CD8_Exh_CancerPass) %>% 
+  arrange(CD8_Exh_CancerPass_RNA) %>%
+ggplot(.,
+  aes(PC_1_ProjectR, PC_2_ProjectR, 
+      color = CD8_Exh_CancerPass_RNA
+      # color = CD8_Exh_CancerPass
+      )) +
+  geom_point(alpha = 0.9, size = 1.2) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+dev.off()
+```
+
+
+## Slingshot
+
+```{r}
+v$seurat_clusters_markers <- CD8ExhTrm_v$seurat_clusters
+
+v.sce <- as.SingleCellExperiment(v)
+
+reducedDims(v.sce) <-
+  SimpleList(
+    PCA_ProjectR = t(projVTrmExh[1:2,]),
+    # CoGAPS_ProjectR = t(projV_cg[1:2,]),
+    
+    PCA_Seurat = v@reductions[["pca"]]@cell.embeddings,
+    UMAP_Seurat = v@reductions[["umap"]]@cell.embeddings,
+    
+    UMAP_markers = CD8ExhTrm_v@reductions[["umap"]]@cell.embeddings,
+    PCA_markers = CD8ExhTrm_v@reductions[["pca"]]@cell.embeddings, 
+    
+    # CuratedScores = as.matrix(colData(v.sce)[, c("CuratedTrmGenes", "CuratedExhGenes")]),
+    FinalScores = as.matrix(colData(v.sce)[, c("CD8_Trm", "CD8_Exh")]),
+    PassScores = as.matrix(colData(v.sce)[, c("CD8_Trm_CancerPass", "CD8_Exh_CancerPass")])
+  )
+
+saveRDS(v.sce, paste0(outPath, "Vries_CD8_SingleCellExperiment_20201005.RDS"))
+```
+
+If using RNA slot
+```{r}
+# v$seurat_clusters_markers <- CD8ExhTrm_v$seurat_clusters
+
+vRNA.sce <- as.SingleCellExperiment(vRNA)
+
+reducedDims(vRNA.sce) <-
+  SimpleList(
+    PCA_ProjectR = t(projVTrmExhRNA[1:2,]),
+    
+    PCA_Seurat = vRNA@reductions[["pca"]]@cell.embeddings,
+    UMAP_Seurat = vRNA@reductions[["umap"]]@cell.embeddings,
+    
+    UMAP_markers = CD8ExhTrm_vRNA@reductions[["umap"]]@cell.embeddings,
+    PCA_markers = CD8ExhTrm_vRNA@reductions[["pca"]]@cell.embeddings, 
+    
+    # CuratedScores = as.matrix(colData(vRNA.sce)[, c("CuratedTrmGenes_RNA", "CuratedExhGenes_RNA")]),
+    FinalScores = as.matrix(colData(vRNA.sce)[, c("CD8_Trm_RNA", "CD8_Exh_RNA")]),
+    PassScores = as.matrix(colData(vRNA.sce)[, c("CD8_Trm_CancerPass_RNA", "CD8_Exh_CancerPass_RNA")])
+  )
+
+saveRDS(vRNA.sce, paste0(outPath, "Vries_CD8_RNA_SingleCellExperiment_20201005.RDS"))
+```
+
+#### Slingshot on Seurat
+```{r}
+v.sce <- slingshot(v.sce, clusterLabels = 'seurat_clusters', reducedDim = 'UMAP_Seurat')
+
+summary(v.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(v.sce$slingPseudotime_1, breaks=100)]
+
+exhCol <- viridis::viridis(100)[cut(v.sce$CD8_Exh, breaks=100)]
+trmCol <- viridis::viridis(100)[cut(v.sce$CD8_Trm, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_Vries_CD8_SeuratUMAP_ClusterSeurat.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(v.sce)$UMAP_Seurat,
+  col = cd8Cols_v[as.factor(v.sce$CellType)],
+  cex = 1, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(v.sce$CellType)),
+       col = cd8Cols_v[unique(as.factor(v.sce$CellType))], pch = 19)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$UMAP_Seurat,
+  col = exhCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$UMAP_Seurat,
+  col = trmCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$UMAP_Seurat,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 1
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+#### Slingshot based on markers
+```{r}
+v.sce <- slingshot(v.sce, clusterLabels = 'seurat_clusters_markers', reducedDim = 'PCA_markers')
+
+summary(v.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(v.sce$slingPseudotime_1, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_Vries_CD8_MarkerPCA_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(v.sce)$PCA_markers,
+  col = cd8Cols_v[as.factor(v.sce$CellType)],
+  cex = 1, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(v.sce$CellType)),
+       col = cd8Cols_v[unique(as.factor(v.sce$CellType))], pch = 19)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_markers,
+  col = exhCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_markers,
+  col = trmCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_markers,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 1
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+#### Slingshot based on scores
+```{r}
+v.sce <- slingshot(v.sce, clusterLabels = 'seurat_clusters_markers', reducedDim = 'FinalScores')
+
+summary(v.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(v.sce$slingPseudotime_1, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_Vries_CD8_FinalScores_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(v.sce)$FinalScores,
+  col = cd8Cols_v[as.factor(v.sce$CellType)],
+  cex = 1, pch = 16,
+  asp = 1
+)
+legend("topright", legend = unique(as.factor(v.sce$CellType)),
+       col = cd8Cols_v[unique(as.factor(v.sce$CellType))], pch = 19)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$FinalScores,
+  col = exhCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$FinalScores,
+  col = trmCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$FinalScores,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 1
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+
+#### Slingshot on projectR
+```{r}
+v.sce <- slingshot(v.sce, clusterLabels = 'seurat_clusters_markers', reducedDim = 'PCA_ProjectR')
+
+summary(v.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(v.sce$slingPseudotime_1, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_Vries_CD8_ProjectrPCA_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(v.sce)$PCA_ProjectR,
+  col = cd8Cols_v[as.factor(v.sce$CellType)],
+  cex = 1, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(v.sce$CellType)),
+       col = cd8Cols_v[unique(as.factor(v.sce$CellType))], pch = 19)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_ProjectR,
+  col = exhCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_ProjectR,
+  col = trmCol,
+  cex = 1, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(v.sce)$PCA_ProjectR,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 1
+)
+lines(SlingshotDataSet(v.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+
+
+# James' gut atlas
+```{r}
+JamesPath <- "../output/James/"
+subGut <- readRDS(paste0(JamesPath, "James_HumanGutAtlas_NK_T_SeuratObject.RDS"))
+
+cd8James <- c("Tcm", "CD8 T", "cycling gd T", "gd T")
+subGutCD8 <- subGut[, subGut$cell_type %in% cd8James]
+
+## 17506  6760
+```
+
+## QC
+```{r, fig.height = 4, fig.width = 9, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <- FeatureScatter(subGutCD8, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "donor")
+plot2 <- FeatureScatter(subGutCD8, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "donor")
+plot1 + plot2
+
+```
+
+### Filter cells 
+```{r}
+## remove 65 cells
+subGutCD8 <- subGutCD8[, subGutCD8$percent.mt < 20 & subGutCD8$nFeature_RNA < 5000]
+```
+
+```{r}
+library(janitor)
+tabyl(subGutCD8[[]], cell_type, donor) %>%
+  adorn_totals() %>%
+  adorn_percentages('col') %>%
+  adorn_pct_formatting() %>%
+  adorn_ns() %>%
+  knitr::kable(caption = "Tabulation of CD8 cell types in each donor")
+```
+
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(subGutCD8, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 1, group.by = "donor", pt.size = 0)
+```
+
+
+```{r, fig.height=4, fig.width = 6, fig.cap = "Number of detected genes across donors, coloured by cell types"}
+ggplot(subGutCD8[[]]) +
+  geom_violin(aes(x = donor, y = nFeature_RNA),
+              scale = 'width') +
+  ggbeeswarm::geom_quasirandom(aes(
+    x = donor,
+    y = nFeature_RNA,
+    colour = as.factor(cell_type)
+  ),
+  pch = 21,
+  cex = 1) +
+  scale_colour_manual(name = 'Cell type', values = brewer.pal(11, "Paired")) +
+  currentTheme
+```
+
+## Normalise using SCTransform
+Note that running `SCTransform` function in the Seurat package uses `sctransform::vst` function, and will replace the below three steps:
+
+- NormalizeData, 
+- ScaleData,  
+- FindVariableFeatures
+
+This will save the transformed data set into the *SCT* assay, and intermediate results are saved in *misc* slot of new assay. The other changes are: *counts* being (corrected) counts, *data* being log1p(counts), *scale.data* being pearson residuals.
+
+To access different data slots after normalisation:
+
+- `ss[["SCT"]]@scale.data`: it has residuals (normalized values), and is used directly as input to PCA. Note that to save memory, we store these values only for variable genes, by setting the return.only.var.genes = TRUE.
+- `ss[["SCT"]]@counts`: it has ‘corrected’ UMI counts
+- `ss[["SCT"]]@data`: it has log-normalized versions of the corrected counts --> for visualisation
+
+
+The data slot is the default used for FeaturePlot, VlnPlot, FindConservedMarkers and the scale.data slot is the default for DoHeatmap, and we use the defaults. Typically scaled data (mean-centered, sd-adjusted) is only used for heatmaps and the rest, especially differential expression, you want to do on normalized count values. DO not re-run SCTransform on the integrated data, but running it on the RNA assay should be fine
+
+
+
+```{r}
+
+library(sctransform)
+
+subGutCD8 <- SCTransform(
+  object = subGutCD8,
+  assay = "RNA",
+  new.assay.name = "SCT",
+  do.correct.umi = TRUE,
+  ncells = NULL,
+  variable.features.n = 5000,
+  # variable.features.rv.th = 1.3,
+  vars.to.regress = "percent.mt",  ## NULL by default
+  do.scale = FALSE,
+  do.center = TRUE,
+  conserve.memory = FALSE,
+  return.only.var.genes = FALSE,
+  seed.use = 20201005,
+  verbose = FALSE
+)
+```
+
+
+
+```{r, fig.width = 7, fig.height = 4, fig.cap = "Mean-variance relationship after normalisation, annotated for highly variable genes"}
+gg <- head(VariableFeatures(subGutCD8), 15)
+plot1 <- VariableFeaturePlot(subGutCD8)
+plot2 <- LabelPoints(plot = plot1, points = gg, repel = TRUE)
+plot2
+# or:
+# CombinePlots(list(plot1,plot2))
+```
+
+Dimension Reduction
+## PCA plots
+Read counts are subject to differences in capture efficiency and sequencing depth between cells (Stegle et al., 2015). The principal component analysis is used to explore the library size effect in the data set.
+```{r PCA, cache = T}
+subGutCD8 <- RunPCA(subGutCD8, verbose = FALSE)
+```
+
+#### Select number of dimensions
+```{r}
+print(subGutCD8[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+```{r, fig.height = 5, fig.width = 7, fig.cap = "Dimension loadings from PCA"}
+VizDimLoadings(subGutCD8, dims = 1:2, reduction = "pca")
+```
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(subGutCD8, dims = 1:30, cells = 500, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(subGutCD8, ndims = 40)
+```
+
+```{r}
+
+DimPlot(subGutCD8, reduction = "pca", group.by = "donor", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+
+DimPlot(subGutCD8, reduction = "pca", group.by = "cell_type", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+
+
+DimPlot(subGutCD8, reduction = "pca", group.by = "region", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+```
+
+
+## Clustering and UMAP
+
+```{r}
+subGutCD8 <- FindNeighbors(subGutCD8, dims = 1:25)
+subGutCD8 <- FindClusters(subGutCD8, resolution = 0.5, random.seed = 20201005)
+
+subGutCD8 <- RunUMAP(subGutCD8, dims = 1:25, n.neighbors = 30, min.dist = 0.3, seed.use = 20201005)
+
+
+```
+
+
+```{r}
+
+pdf(paste0(figPath, "UMAP_James_CD8_NoBatchCorrection.pdf"), height = 4, width = 4)
+
+DimPlot(subGutCD8, reduction = "umap") +
+  theme_minimal() +
+  theme(legend.position = "top") + 
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+DimPlot(subGutCD8, reduction = "umap", 
+        group.by = "cell_type") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+DimPlot(subGutCD8, reduction = "umap", 
+        group.by = "donor") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 2, 
+    override.aes = list(size=3)))
+
+DimPlot(subGutCD8, reduction = "umap", 
+        group.by = "region") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+dev.off()
+```
+
+
+## Score cells using SCT assay
+SKIP THIS - I decided to go ahead with the scores from RNA slots
+```{r, message = F, warning = F}
+library(singscore)
+exprDataJ <- as.matrix(GetAssayData(subGutCD8, slot = "data", assay = "SCT"))
+
+rd_J <- rankGenes(exprDataJ)
+
+##---------
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd_J, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresCollins) <- unique(collinsSig$Signature)
+rownames(scoresCollins) <- colnames(rd_J)
+
+
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd_J, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- names(selImmuneSigs)
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer"
+rownames(scoresImm) <- colnames(rd_J)
+
+subGutCD8@meta.data <- data.frame(subGutCD8@meta.data , scoresCollins)
+subGutCD8@meta.data  <- data.frame(subGutCD8@meta.data , scoresImm)
+
+scoreNames <- c(colnames(scoresImm), colnames(scoresCollins))
+scoreNames <- scoreNames[order(scoreNames)]
+```
+
+## Save James data after UMAP
+```{r}
+# saveRDS(subGutCD8, paste0(outPath, "James_CD8_SeuratObject_UMAP_ScoresSCT_Uncorrected.RDS"))
+```
+
+## Batch correction
+### Harmony
+```{r}
+library(harmony)
+subGutCD8_Harmony <- RunHarmony(subGutCD8, c("donor"), assay.use = "SCT")
+
+subGutCD8_Harmony <- RunUMAP(subGutCD8_Harmony, 
+                          reduction = "harmony", 
+                          dims = 1:25)
+```
+
+
+```{r}
+anns <- c("donor","cell_type", "batch", "region", "gender")
+
+pdf(
+  paste0(figPath, "UMAP_James_Harmony_CD8_CellAnnot.pdf"),
+  height = 4,
+  width = 4
+)
+
+for(a in anns){
+  print(DimPlot(subGutCD8_Harmony, 
+                reduction = "umap", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3))))
+  
+  # print(visReduction_meta (object = subGutCD8_Harmony,
+  #   reduction = "umap",
+  #   dim1Name = "UMAP_1",
+  #   dim2Name = "UMAP_2",
+  #   annot = a,
+  #   textSize = 3,
+  #   pointSize = 0.4,
+  #   pointAlpha = 0.8,
+  #   plotTitle = a,
+  #   plotHexbin = FALSE,
+  #   actionMeta = "majority", 
+  #   cols = cols) )
+}
+dev.off()
+
+
+pdf(
+  paste0(figPath, "Harmony_James_Harmony_CD8_CellAnnot.pdf"),
+  height = 4,
+  width = 4
+)
+
+for(a in anns){
+  print(DimPlot(subGutCD8_Harmony, 
+                reduction = "harmony", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3))))
+  
+  # print(visReduction_meta (object = subGutCD8_Harmony,
+  #   reduction = "umap",
+  #   dim1Name = "UMAP_1",
+  #   dim2Name = "UMAP_2",
+  #   annot = a,
+  #   textSize = 3,
+  #   pointSize = 0.4,
+  #   pointAlpha = 0.8,
+  #   plotTitle = a,
+  #   plotHexbin = FALSE,
+  #   actionMeta = "majority", 
+  #   cols = cols) )
+}
+dev.off()
+```
+
+
+### Seurat integration
+I go back to this step: `subGut <- subGut[, subGut$percent.mt < 20 & subGut$nFeature_RNA < 5000]` before doing any normalisation and run SCTransform on each donor separately.
+
+1. Create Seurat object
+2. QC by filtering out cells based on percent.mito and nFeature_RNA
+3. SCT normalize each dataset specifying the parameter vars.to.regress = percent.mito
+4. Integrate all datasets - do not run the ScaleData function after integration
+5. Run PCA, UMAP, FindClusters, FindNeighbors (on default assay which is "integrated")
+6. Change default assay to "RNA"; normalize then generate FeaturePlots and perform differential expression analysis
+
+```{r}
+subGutCD8_batch <- subGut[, subGut$cell_type %in% cd8James]
+
+## remove 65 cells
+subGutCD8_batch <- subGutCD8_batch[, subGutCD8_batch$percent.mt < 20 & subGutCD8_batch$nFeature_RNA < 5000]
+```
+
+
+```{r, cache = TRUE}
+donor.list <- SplitObject(subGutCD8_batch, split.by = "donor")
+
+# donor.list <- lapply(X = donor.list, FUN = function(x) {
+#     x <- NormalizeData(x)
+#     x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+# })
+
+donor.list <- lapply(X = donor.list, FUN = function(x) {
+ SCTransform(
+  object = x,
+  assay = "RNA",
+  new.assay.name = "SCT",
+  do.correct.umi = TRUE,
+  ncells = NULL,
+  variable.features.n = 5000,
+  # variable.features.rv.th = 1.3,
+  vars.to.regress = "percent.mt",  ## NULL by default
+  do.scale = FALSE,
+  do.center = TRUE,
+  conserve.memory = FALSE,
+  return.only.var.genes = FALSE,
+  seed.use = 20201005,
+  verbose = TRUE
+)
+})
+
+options(future.globals.maxSize = 4000000000)
+
+donor.features <-
+  SelectIntegrationFeatures(object.list = donor.list, nfeatures = 5000)
+
+donor.list <-
+  PrepSCTIntegration(object.list = donor.list,
+                     anchor.features = donor.features,
+                     verbose = TRUE)
+
+donor.anchors <-
+  FindIntegrationAnchors(
+    object.list = donor.list,
+    normalization.method = "SCT",
+    anchor.features = donor.features,
+    verbose = TRUE
+  )
+
+subGut_integrated <-
+  IntegrateData(
+    anchorset = donor.anchors,
+    normalization.method = "SCT",
+    verbose = TRUE
+  )
+
+
+```
+
+#### Save integrated data
+```{r}
+saveRDS(subGut_integrated, file = paste0(outPath, "James_HumanGutAtlas_CD8_IntegratedSCT.RDS"))
+
+# subGut_integrated <- readRDS(paste0("../output/James/", "James_HumanGutAtlas_CD8_IntegratedSCT.RDS"))
+```
+
+#### PCA, UMAP, and Clustering
+We use the corrected data for PCA and UMAP
+```{r}
+DefaultAssay(subGut_integrated) <- "integrated"
+
+subGut_integrated <- RunPCA(subGut_integrated, npcs = 30, verbose = F)
+# 
+# subGut_integrated <-
+#   RunUMAP(subGut_integrated, reduction = "pca", dims = 1:30)
+# 
+# subGut_integrated <- FindNeighbors(subGut_integrated, reduction = "pca", dims = 1:30)
+# subGut_integrated <- FindClusters(subGut_integrated, resolution = 1)
+```
+
+
+```{r}
+subGut_integrated <-
+  RunUMAP(
+    subGut_integrated,
+    reduction = "pca",
+    dims = 1:30,
+    n.neighbors = 30,
+    min.dist = 0.3,
+    seed.use = 20201005
+  )
+
+subGut_integrated <- FindNeighbors(subGut_integrated, reduction = "pca", dims = 1:30)
+subGut_integrated <- FindClusters(subGut_integrated, resolution = 0.5)
+
+DimPlot(subGut_integrated)
+DimPlot(subGut_integrated, group.by = "donor")
+DimPlot(subGut_integrated, group.by = "region")
+DimPlot(subGut_integrated, group.by = "cell_type")
+
+```
+
+
+```{r}
+# source(paste0(scriptPath, "visReduction_function.R"))
+
+anns <- c("seurat_clusters", "donor","cell_type", "region", "gender", "batch")
+
+pdf(
+  paste0(figPath, "UMAP_James_CD8_SeuratIntegratedSCT_CellAnnot.pdf"),
+  height = 4,
+  width = 4
+)
+
+for(a in anns){
+  print(DimPlot(subGut_integrated, 
+                reduction = "umap", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3))))
+    
+  # print(visReduction_meta (object = subGut_integrated,
+  #   reduction = "umap",
+  #   dim1Name = "UMAP_1",
+  #   dim2Name = "UMAP_2",
+  #   annot = a,
+  #   textSize = 1.6,
+  #   pointSize = 0.4,
+  #   pointAlpha = 0.8,
+  #   plotTitle = a,
+  #   plotHexbin = FALSE,
+  #   actionMeta = "majority",
+  #   cols = cols) )
+}
+dev.off()
+```
+
+#### Use RNA for expr
+```{r}
+DefaultAssay(subGut_integrated) <- "RNA"
+# Normalize RNA data for visualization purposes
+subGut_integrated <- NormalizeData(subGut_integrated, verbose = FALSE)
+```
+
+## Score cells using RNA assay
+```{r, message = F, warning = F}
+library(singscore)
+exprDataJ_RNA <- as.matrix(GetAssayData(subGut_integrated, slot = "data", assay = "RNA"))
+
+rd_JRNA <- rankGenes(exprDataJ_RNA)
+
+##---------
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd_JRNA, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresCollins) <- unique(collinsSig$Signature)
+rownames(scoresCollins) <- colnames(rd_JRNA)
+
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd_JRNA, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- names(selImmuneSigs)
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer"
+rownames(scoresImm) <- colnames(rd_JRNA)
+
+subGut_integrated@meta.data <- data.frame(subGut_integrated@meta.data , scoresCollins)
+subGut_integrated@meta.data  <- data.frame(subGut_integrated@meta.data , scoresImm)
+
+scoreNames <- c(colnames(scoresImm), colnames(scoresCollins))
+scoreNames <- scoreNames[order(scoreNames)]
+```
+
+
+#### Color UMAP for markers
+
+```{r}
+
+cell_attrsJ <- subGut_integrated[[]]
+currentRedData <- subGut_integrated@reductions[["umap"]]@cell.embeddings
+
+cell_attrsJ$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsJ$UMAP_2 <- currentRedData[, "UMAP_2"]
+```
+
+```{r}
+## do not exist in the data: "GPR15" "RBKS"  "GFPT2"
+# exprDataJ <- as.matrix(GetAssayData(subGut_integrated, slot = "data", assay = "RNA"))
+
+exprDataJ <- exprDataJ_RNA
+
+gg <- CD8_ExhMarker
+# gg <- CD8_TrmMarker
+
+
+gg <- gg[gg %in% rownames(exprDataJ)]
+
+exprDataJ_Genes <- exprDataJ[gg,]
+
+exprDataJ_Genes <- data.frame(cell_attrsJ, 
+                              data.frame(t(exprDataJ_Genes), 
+                                         check.names = F),
+                              check.names = F)
+
+# colnames(exprDataJ_Genes)
+exprLongJ <- exprDataJ_Genes %>% 
+  pivot_longer(
+    values_to = "Expression",
+    names_to = "Genes" ,
+    cols = 137:ncol(exprDataJ_Genes)
+  ) %>% 
+  data.frame(check.names = F)
+
+
+pdf(
+  paste0(figPath, "UMAP_James_SeuratIntegrated_CD8_ExhMarkers_RNA.pdf"),
+  height = 5,
+  width = 15
+  # height = 6,
+  # width = 8.5
+)
+exprLongJ %>% 
+  group_by(Genes) %>% 
+  arrange(Expression) %>% 
+ggplot(., aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+  geom_point(alpha = 0.8, cex = 0.4) +
+  facet_wrap(~ Genes, ncol = 10) +
+  scale_color_viridis_c() +
+  theme_dark()
+
+
+visReduction_feature (
+  object = subGut_integrated,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "RNA",
+    objSlot = "data",
+    # dataType = "data",
+    nrow = 3,
+    ncol = 10,
+    features = gg,
+    textSize = 8,
+    pointSize = 0.6,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+
+dev.off()
+```
+
+#### Color UMAP for scores
+
+```{r}
+scoreNames <- scoreNames[order(scoreNames)]
+
+pdf(paste0(figPath, "UMAP_James_SeuratIntegrated_CD8_ScoresRNA.pdf"),
+    height = 4, width = 4)
+
+for(i in c(scoreNames, "nCount_RNA", "nFeature_RNA", "percent.mt")){
+  print(
+    cell_attrsJ %>% 
+      arrange(!!sym(i)) %>% 
+    ggplot(., 
+           aes_string(x = "UMAP_1", 
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 1, cex = 1) +
+  scale_color_viridis_c() +
+  theme_dark() +
+          theme(
+        legend.spacing = unit(1.5, "mm"),
+        legend.position = "top",
+        legend.key.width = unit(0.9, "cm"), 
+        legend.title = element_text(size = 8, face = "italic"),
+        legend.text = element_text(size = 8)
+      )
+  )
+}
+dev.off()
+```
+
+
+
+### PCA/UMAP/Clustering using marker genes
+```{r}
+
+gg <- c(CD8_ExhMarker, CD8_TrmMarker)
+
+subGut_integrated2 <- subGut_integrated
+DefaultAssay(subGut_integrated2) <- "integrated"
+
+
+subGut_integrated2 <-
+  RunPCA(
+    subGut_integrated2,
+    # npcs = 25,
+    verbose = F,
+    features = gg
+  )
+
+subGut_integrated2 <-
+  RunUMAP(
+    subGut_integrated2,
+    reduction = "pca",
+    dims = 1:20,
+    n.neighbors = 30,
+    min.dist = 0.3,
+    seed.use = 20201005
+  )
+
+# subGut_integrated2 <-
+#   RunUMAP(
+#     subGut_integrated2,
+#     reduction = "pca",
+#     features = gg,
+#     # dims = 1:5,
+#     n.neighbors = 20,
+#     min.dist = 0.2,
+#     seed.use = 20200828
+#   )
+
+subGut_integrated2 <- FindNeighbors(subGut_integrated2, reduction = "pca", dims = 1:20)
+subGut_integrated2 <- FindClusters(subGut_integrated2, resolution = 0.5)
+
+DimPlot(subGut_integrated2)
+DimPlot(subGut_integrated2, group.by = "donor")
+DimPlot(subGut_integrated2, group.by = "region")
+DimPlot(subGut_integrated2, group.by = "cell_type")
+FeaturePlot(subGut_integrated2, "CD8_Trm", order = T)
+FeaturePlot(subGut_integrated2, "CD8_Exh", order = T)
+
+```
+
+
+```{r}
+# source(paste0(scriptPath, "visReduction_function.R"))
+
+# subGut_integrated2@meta.data <- cell_attrsJ
+
+anns <- c("seurat_clusters", "cell_type", "region", "gender", "donor", "batch")
+
+pdf(
+  # paste0(figPath, "PCA_James_CD8_ExhTrmMarkers_SeuratIntegratedSCT_CellAnnot.pdf"),
+  paste0(figPath, "UMAP_James_CD8_ExhTrmMarkers_SeuratIntegratedSCT_CellAnnot.pdf"),
+  height = 4.3,
+  width = 4
+)
+
+for(a in anns){
+  print(DimPlot(subGut_integrated2,
+                # reduction = "pca",
+                reduction = "umap",
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2,
+    override.aes = list(size=3))))
+}
+
+FeaturePlot(subGut_integrated2,
+            "CD8_Exh",
+            reduction = "umap",
+            # reduction = "pca",
+            pt.size = 0.5,
+            order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top")
+
+FeaturePlot(subGut_integrated2,
+            "CD8_Trm",
+            reduction = "umap",
+            # reduction = "pca",
+            pt.size = 0.5,
+            order = T) +
+  scale_color_viridis_c(100) + theme_dark() +
+  theme(legend.position = "top")
+
+
+dev.off()
+
+
+
+pdf(
+  paste0(figPath, "UMAP_PCA_James_Blend_CD8_ExhTrmMarkers_SeuratIntegratedSCT.pdf"),
+  height = 3,
+  width = 12
+)
+FeaturePlot(subGut_integrated2,
+            features = c("CD8_Trm", "CD8_Exh"),
+            pt.size = 0.5,
+            order = T, blend = T,
+            cols =  c("grey90", "orange2", "blue"), 
+            reduction = "umap") 
+
+FeaturePlot(subGut_integrated2,
+            features = c("CD8_Trm", "CD8_Exh"),
+            pt.size = 0.5,
+            order = T, blend = T,
+            cols =  c("grey90", "orange2", "blue"), 
+            reduction = "pca") 
+dev.off()
+```
+
+## ProjectR
+```{r}
+library(projectR)
+
+exprDataJ <- exprDataJ_RNA
+##------- TrmExh
+
+gg <- c(CD8_ExhMarker, CD8_TrmMarker)
+exprDataJTrmExh <- exprDataJ[rownames(exprDataJ) %in% gg, ]
+
+currentLoad <- ZhangMarkerLoadings[, 1:10]
+
+projJTrmExh <- projectR(exprDataJTrmExh, currentLoad)
+rownames(projJTrmExh) <- paste0(rownames(projJTrmExh), "_ProjectR")
+
+
+
+
+subGut_integrated$seurat_clusters_markers <- subGut_integrated2$seurat_clusters
+
+cellAnnot <- subGut_integrated[[]]
+cellAnnot <- data.frame(cellAnnot, t(projJTrmExh))
+
+```
+
+If using RNA slot:
+
+```{r}
+# gg <- c(pctData_cd8TrmPass$gene, pctData_cd8ExhPass$gene)
+# 
+# jExprTrmExh <- exprDataJ[rownames(exprDataJ) %in% gg, ]
+# 
+# currentLoad <- ZhangMarkerLoadings$cd8TrmExhSigPCALoading[
+#   rownames(jExprTrmExh), 1:10]
+# 
+# projVTrmExhRNA <- projectR(jExprTrmExh, currentLoad)
+# rownames(projVTrmExhRNA) <- paste0(rownames(projVTrmExhRNA), "_TrmExh")
+# 
+# 
+# vRNA$seurat_clusters_markers <- CD8ExhTrm_vRNA$seurat_clusters
+# cellAnnotRNA <- vRNA[[]]
+# cellAnnotRNA <- data.frame(cellAnnotRNA, t(projVTrmExhRNA))
+
+```
+
+
+
+
+### Plot PCA using ProjectR PCs, coloured by scores
+```{r}
+
+pdf(
+  paste0(figPath, "PCA_James_ProjectR_CD8_TrmExh_RNA.pdf"),
+  height = 5,
+  width = 5
+)
+ggplot(
+  cellAnnot,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = cell_type)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_manual(values = cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+
+ggplot(
+  cellAnnot,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = region)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_manual(values = cols) +
+  theme_bw() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+  
+cellAnnot %>%
+  arrange(CD8_Trm) %>% 
+ggplot(
+  .,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Trm)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+cellAnnot %>%
+  arrange(CD8_Trm_CancerPass) %>% 
+ggplot(
+  .,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Trm_CancerPass)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+cellAnnot %>%
+  arrange(CD8_Exh) %>% 
+ggplot(
+  .,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Exh)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+
+cellAnnot %>%
+  arrange(CD8_Exh_CancerPass) %>% 
+ggplot(
+  .,
+  aes(PC_1_ProjectR, PC_2_ProjectR, color = CD8_Exh_CancerPass)) +
+  geom_point(alpha = 0.9, size = 0.9) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top",
+        legend.key.width = unit(0.9, "cm"))
+dev.off()
+```
+
+
+## Slingshot
+
+```{r}
+# v$seurat_clusters_markers <- CD8ExhTrm_v$seurat_clusters
+j.sce <- as.SingleCellExperiment(subGut_integrated)
+
+reducedDims(j.sce) <-
+  SimpleList(
+    PCA_ProjectR = t(projJTrmExh[1:2,]),
+    # CoGAPS_ProjectR = t(projV_cg[1:2,]),
+    
+    PCA_Seurat = subGut_integrated@reductions[["pca"]]@cell.embeddings,
+    UMAP_Seurat = subGut_integrated@reductions[["umap"]]@cell.embeddings,
+    
+    UMAP_markers = subGut_integrated2@reductions[["umap"]]@cell.embeddings,
+    PCA_markers = subGut_integrated2@reductions[["pca"]]@cell.embeddings, 
+
+    FinalScores = as.matrix(colData(j.sce)[, c("CD8_Trm", "CD8_Exh")]),
+    PassScores = as.matrix(colData(j.sce)[, c("CD8_Trm_CancerPass", "CD8_Exh_CancerPass")])
+  )
+
+saveRDS(j.sce, paste0(outPath, "James_CD8_SingleCellExperiment_20201005.RDS"))
+
+```
+
+
+### Slingshot on Seurat
+
+```{r}
+library(slingshot)
+
+j.sce <- slingshot(j.sce, 
+                        clusterLabels = 'seurat_clusters', 
+                        reducedDim = 'UMAP_Seurat')
+
+
+summary(j.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(j.sce$slingPseudotime_1, breaks=100)]
+
+# contCol <- colorRampPalette(brewer.pal(11,'')[-6])(100)
+exhCol <- viridis::viridis(100)[cut(j.sce$CD8_Exh, breaks=100)]
+trmCol <- viridis::viridis(100)[cut(j.sce$CD8_Trm, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_James_CD8_SeuratUMAP_ClusterSeurat.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(j.sce)$UMAP_Seurat,
+  col = cols[as.factor(j.sce$region)],
+  cex = 0.6, pch = 16,
+  asp = 1
+)
+legend("bottomright", legend = unique(as.factor(j.sce$region)),
+       col = cols[unique(as.factor(j.sce$region))], pch = 19)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_Seurat,
+  col = exhCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_Seurat,
+  col = trmCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_Seurat,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.6
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+
+dev.off()
+```
+
+
+### Slingshot based on markers
+
+```{r}
+library(slingshot)
+
+j.sce <- slingshot(j.sce, 
+                        clusterLabels = 'seurat_clusters_markers', 
+                        reducedDim = 'UMAP_markers')
+
+
+summary(j.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(j.sce$slingPseudotime_1, breaks=100)]
+
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_James_CD8_MarkersUMAP_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(j.sce)$UMAP_markers,
+  col = cols[as.factor(j.sce$region)],
+  cex = 0.6, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(j.sce$region)),
+       col = cols[unique(as.factor(j.sce$region))], pch = 19)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_markers,
+  col = exhCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_markers,
+  col = trmCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$UMAP_markers,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.6
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+
+dev.off()
+```
+
+
+### Slingshot based on scores
+
+```{r}
+library(slingshot)
+
+j.sce <- slingshot(j.sce, 
+                        clusterLabels = 'seurat_clusters_markers', 
+                        reducedDim = 'FinalScores')
+
+
+summary(j.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(j.sce$slingPseudotime_1, breaks=100)]
+
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_James_CD8_FinalScores_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(j.sce)$FinalScores,
+  col = cols[as.factor(j.sce$region)],
+  cex = 0.6, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(j.sce$region)),
+       col = cols[unique(as.factor(j.sce$region))], pch = 19)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$FinalScores,
+  col = exhCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$FinalScores,
+  col = trmCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$FinalScores,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.6
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+
+dev.off()
+```
+
+### Slingshot based on ProjectR
+
+```{r}
+library(slingshot)
+
+j.sce <- slingshot(j.sce, 
+                        clusterLabels = 'seurat_clusters_markers', 
+                        reducedDim = 'PCA_ProjectR')
+
+
+summary(j.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(j.sce$slingPseudotime_1, breaks=100)]
+
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_James_CD8_ProjectrPCA_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(j.sce)$PCA_ProjectR,
+  col = cols[as.factor(j.sce$region)],
+  cex = 0.6, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(j.sce$region)),
+       col = cols[unique(as.factor(j.sce$region))], pch = 19)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$PCA_ProjectR,
+  col = exhCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$PCA_ProjectR,
+  col = trmCol,
+  cex = 0.6, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(j.sce)$PCA_ProjectR,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.6
+)
+lines(SlingshotDataSet(j.sce), lwd = 2, col = 'black')
+
+
+dev.off()
+```

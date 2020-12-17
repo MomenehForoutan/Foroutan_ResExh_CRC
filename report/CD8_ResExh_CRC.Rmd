@@ -1,0 +1,3499 @@
+---
+title: 'Resident programs in CD8 T cells'
+subtitle: 'Pre-processing the data'
+author: 
+  - name: 'Sepideh Foroutan'
+    affiliation: 'Huntington Cancer Immunotherapy Lab'
+    url: https://www.monash.edu/discovery-institute/huntington-lab
+date: '09-06-2020'
+output:
+  rmdformats::readthedown:
+    fig_width: 12
+    fig_height: 5
+    gallery: TRUE
+    highlight: tango
+    lightbox: TRUE
+    self_contained: TRUE
+    thumbnails: FALSE
+    number_sections: TRUE	
+    toc_depth: 3
+    use_bookdown: TRUE
+    code_folding: hide
+  html_document2:
+    df_print: paged
+params:
+  update_date: !r paste("Last updated on:", Sys.Date() )
+editor_options: 
+  chunk_output_type: inline
+---
+`r params$update_date`
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+```{r knitr_init, echo=FALSE, results="asis", cache=FALSE}
+
+library(knitr)
+library(rmdformats)
+library(DT)
+library(BiocStyle)
+library(ggplot2)
+library(RColorBrewer)
+library(Seurat)
+
+options(max.print = "75")
+opts_chunk$set(
+  # echo = FALSE,
+  # cache = FALSE,
+  # prompt = FALSE,
+  # tidy = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  # results = FALSE,
+  root.dir = normalizePath("."))
+opts_knit$set(width = 65)
+
+```
+
+# Set up and overview
+
+The Smart-seq2 data were processed as previously described (Zhang et al., 2018). Low-quality reads were filtered out when: (1) ‘‘N’’
+bases accounting for 10% read length; or (2) bases with quality < 5 account for 50% read length; or (3) containing adaptor sequences.
+The remaining paired-end reads were aligned to the UCSC hg38 human genome reference using kallisto (version 0.43.1)(Bray et al.,
+2016) with parameters ‘‘–bootstrap-samples=100–threads=2.’’ The R package tximport (version 1.9.12) was used to summarize the
+transcript-level estimated counts into the matrix of gene-level counts. Low-quality cells were discarded if the cell library size or the
+number of expressed genes (counts larger than 0) was smaller than pre-defined thresholds, which were the medians of all cells minus 3 x median absolute deviation. Cells were also removed if their proportions of mitochondrial gene expression were larger than 10% (70% for CD45- cells). In the droplet-based 10X data, the Cell Ranger toolkit (version 2.1.0) provided by 103 Genomics was applied
+to align reads and generate the gene-cell unique molecular identifier (UMI) matrix, using the reference genome GRCh38 and
+GRCm38. For each cell, we quantified the number of genes and UMIs, and kept high quality cells with the detection threshold of
+600-4,000 genes and 1,600-25,000 UMIs. We used a relatively high threshold to ensure that we have filtered out the most of barcodes
+associated with empty partitions or doublet cells. Cells with unusually high detection rate of mitochondrial gene expression were also
+excluded as described above.
+
+We used an entropy-based metric to quantify the batch effect across different patients (Azizi et al., 2018). Genes with the top 1000
+standard deviation were used to map the data to a two-dimensional t-SNE by R package Rtsne (version 0.15). We constructed a k-NN
+graph (k = 30) based on the Euclidean distance of cells in tSNE coordinates using the R function kNN from dbscan package (version
+1.1.2), and defined the mixing of the data across patients as Shannon entropy.
+
+We performed batch correction across different patients in both Smart-seq2 and 103 scRNA-seq data by calculating the batch factor
+(BF) using the approach in pagoda2. The batch removed counts ðRCnobatchÞ was defined as Ci;j=BFi;k , where Ci;j was the raw count
+value (or UMI) of gene i in cell j and BFi;k was the batch factor of gene i in batch k. In Smart-seq2 data, the transcripts per million (TPM)
+value was calculated by ðð106 3RCnobatch i;j =length of gene iÞ =ðP
+RCnobatch i;j =length of gene iÞ Þ. In 10X data, the expression value
+was calculated by to create a TPM-like value, and finally computing log2
+ðTPM + 1Þ. The corrected expression matrices were used as
+the input for further analysis.
+
+
+Patients P0309, P0411, and P1212 had fresh tumor tissues and matched peripheral blood, while patients P0720 and P1025 had fresh tumor tissues and matched adjacent normal tissues. Their ages ranged from 40
+to 89 with a median of 68.5. None of them were treated with chemotherapy or radiation prior to tumor resection.
+
+
+Among 18 patients in this study, 3 of them were
+MSI-H (P0123, P0413 and P0825), and the other 15 patients were MSS
+
+```{r}
+# ss$MSI <- "MSS"
+# ss$MSI[ss$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+
+```
+
+```{r file set up, echo=F, results=F, message=F, warning=F}
+mainDir <- getwd()
+outPath <- "../output/CD8/"
+figPath <- "../figure/CD8/"
+dataPath <- "../data/"
+scriptPath <- "../script/"
+
+tpmPath <- "/Users/mfor0011/Documents/data/NK_Data/singleCell_NK/Human/GSE146771_Zhang_CRC/"
+sigPath <- "/Users/mfor0011/Documents/data/signatures/ProcessedSigs/"
+
+# ifelse(!dir.exists(file.path(mainDir, outPath)), dir.create(file.path(mainDir, outPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, figPath)), dir.create(file.path(mainDir, figPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, dataPath)), dir.create(file.path(mainDir, dataPath)), FALSE)
+# ifelse(!dir.exists(file.path(mainDir, scriptPath)), dir.create(file.path(mainDir, scriptPath)), FALSE)
+
+# library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+library(ggbeeswarm)
+library(SingleCellExperiment)
+library(Seurat)
+
+options(digits = 3)
+
+equal_breaks <- function(n = nBreak, s = scalingFactor, ...){
+  function(x){
+    # rescaling
+    d <- s * diff(range(x)) / (1+2*s)
+    round( seq(min(x)+d, max(x)-d, length=n), 2)
+  }
+}
+
+nBreak = 3
+scalingFactor = 0.05
+
+textSize <- 1.2
+
+currentTheme <- theme_bw() +
+  theme(
+    # panel.background = element_blank()
+    axis.title = element_text(size = rel(textSize)),
+    axis.text = element_text(angle = 0, size = rel(textSize)),
+    # strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black", size = 0.5),
+    legend.position = 'top',
+    legend.title = element_text(size = rel(textSize), face = "italic"),
+    legend.text = element_text(size = rel(textSize)),
+    legend.key.size = unit(1, 'lines'),
+    ## increase the line space
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+cols <-  c(
+  brewer.pal(8, "Dark2")[-5],
+  brewer.pal(10, "Paired"),
+  brewer.pal(12, "Set3"),
+  brewer.pal(9, "Blues")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Oranges")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greens")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Purples")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Reds")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greys")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuGn")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "PuRd")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuPu")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "YlGn")[c(8, 3, 7, 4, 6, 9, 5)])
+
+
+source(paste0(scriptPath, "visReduction_function.R"))
+```
+
+
+
+# SMART-seq data
+```{r}
+## dim:15179 10469
+
+# crcSmart <-
+#    data.table::fread(
+#     paste0(tpmPath, "GSE146771_CRC.Leukocyte.Smart-seq2.TPM.txt")
+#   )
+# 
+# rnames <- crcSmart$V1
+# crcSmart <- crcSmart[, 2:ncol(crcSmart)]
+# rownames(crcSmart) <- rnames
+# 
+# crcSmart <- as.matrix(crcSmart)
+# rownames(crcSmart) <- rnames
+
+
+metaSmart <-
+  read.table(
+    paste0(tpmPath, "GSE146771_CRC.Leukocyte.Smart-seq2.Metadata.txt"),
+    header = T,
+    sep = "\t"
+  )
+
+
+
+# metaSmartTum <- metaSmart[metaSmart$Global_Cluster  %in% c("Malignant cell", "Epithelial cell"), ]
+# 
+# crcSmartTum <-
+#   crcSmart[, metaSmartTum$CellName]
+# 
+# rownames(metaSmartTum) <- metaSmartTum$CellName
+# 
+# tum <-
+#   CreateSeuratObject(counts = crcSmartTum,
+#                      project = "Zhang_Tum_Epithelial",
+#                      meta.data = metaSmartTum,
+#                      min.cells = 5)
+# 
+# tum[["percent.mt"]] <- PercentageFeatureSet(tum, pattern = "^MT-")
+
+# saveRDS(tum, file = paste0(outPath, "Zhang_SmartSeq_SeuratObj_Tum_Epithelial.RDS"))
+
+
+# tum$MSI <- "MSS"
+# tum$MSI[tum$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+# 
+# tum <- FindVariableFeatures(tum, selection.method = "vst", nfeatures = 2000)
+# 
+# all.genes <- rownames(tum)
+# tum <- ScaleData(tum, features = all.genes)
+# 
+# tum <- RunPCA(tum, features = VariableFeatures(object = tum), verbose = F)
+# 
+# tum <- FindNeighbors(tum, dims = 1:15)
+# tum <- FindClusters(tum, resolution = 0.3, random.seed = 20201003)
+# 
+# tum <- RunUMAP(tum, dims = 1:15, n.neighbors = 30, min.dist = 0.3, seed.use = 20201003)
+# 
+# saveRDS(tum, paste0(outPath, "Zhang_SmartSeq_SeuratObj_Tum_Epithelial_UMAP.RDS"))
+
+
+
+
+# metaSmart$Cell.Annotation <- metaSmart$Global_Cluster
+# metaSmart$Cell.Annotation <- as.character(metaSmart$Cell.Annotation)
+# 
+# metaSmart$Cell.Annotation[metaSmart$Sub_Cluster == "hI01_NK-CD16"] <- "NK_CD16"
+# metaSmart$Cell.Annotation[metaSmart$Sub_Cluster == "hI02_NK-GZMK"] <- "NK_GZMK"
+# metaSmart$Cell.Annotation[metaSmart$Sub_Cluster == "hI03_NK-CD103"] <- "NK_CD103"
+# metaSmart$Cell.Annotation[metaSmart$Sub_Cluster == "hI04_ILC3-SLC4A10"] <- "ILC3_SLC4A10"
+
+metaSmart$Sub_Cluster <- as.character(metaSmart$Sub_Cluster)
+metaSmart$Sub_Cluster <- sapply(metaSmart$Sub_Cluster, function(x){
+  unlist(strsplit(x, "_"))[2]
+})
+# sigsImmune <- readRDS(paste0(sigPath, "SigLists_Immune.RDS"))
+# sigsTum <- readRDS(paste0(sigPath, "SigLists_Tumour.RDS"))
+
+# sigGenes <- unique(c(sigsImmune$sigGenes))
+
+
+immCells <- metaSmart$Sub_Cluster[grepl("CD8", metaSmart$Sub_Cluster)|
+                                    grepl("NK", metaSmart$Sub_Cluster) |
+                                    grepl("CD4", metaSmart$Sub_Cluster)|
+                                    grepl("ILC3", metaSmart$Sub_Cluster)]
+
+cellCols <- cols[1:length(unique(immCells))]
+names(cellCols) <- unique(immCells)[order(unique(immCells))]
+cd8Cols <- cellCols[grepl("CD8", 
+                          names(cellCols))]
+```
+
+## Read GPCRs and TFs
+Read human protein atlas and get the annotations from there.
+794 genes.
+```{r}
+hpaPath <- "/Users/mfor0011/Documents/data/HPA/"
+hpa <- read.delim(paste0(hpaPath, "proteinatlas.tsv"), header = T)
+
+GPCRs <-
+  hpa[grepl("coupled", hpa$Gene.description, ignore.case = T) |
+        grepl("coupled", hpa$Protein.class, ignore.case = T), c(
+          "Gene",
+          "Ensembl",
+          "Protein.class",
+          "Gene.description",
+          "Uniprot" ,
+          "Blood.RNA...NK.cell..NX."
+        )]
+
+GPCRs <- GPCRs[order(GPCRs$Blood.RNA...NK.cell..NX., decreasing = T), ]
+
+
+TFs <- hpa[grepl("Transcription factor", hpa$Gene.description, ignore.case = T) |
+        grepl("Transcription factor", hpa$Protein.class, ignore.case = T), c(
+          "Gene",
+          "Ensembl",
+          "Protein.class",
+          "Gene.description",
+          "Uniprot" ,
+          "Blood.RNA...NK.cell..NX."
+        )]
+  
+TFs <- TFs[order(TFs$Blood.RNA...NK.cell..NX., decreasing = T), ]
+ 
+  
+
+goPath <- "/Users/mfor0011/Documents/data/GPCRs/"
+go <- read.delim(paste0(goPath, "QuickGO-annotations-1592213989958-20200615.tsv"), header = T)
+
+go <- unique(go$SYMBOL)
+
+## 780 genes common between these
+length(intersect(GPCRs$Gene, go))
+
+## 2035 unique genes
+gpr <- unique(c(as.character(GPCRs$Gene), as.character(go)))
+gpr <- as.character(gpr)
+gpr <- gpr[! grepl("Homo sapiens", gpr)]
+gpr <- gpr[! grepl("human", gpr)]
+## MGRF
+
+
+
+uniprot <- read.csv(paste0(goPath, "7tmrlist_uniprot.csv"), 
+                    stringsAsFactors = F)
+
+uniprot <- uniprot[grepl("HUMAN", uniprot$genes), ]
+uniprot <- sapply(uniprot$genes, function(x){ unlist(strsplit(x, "_"))[1]})
+
+uniprot <- as.character(uniprot)
+
+
+tars <- read.csv(paste0(goPath, "targets_and_families.csv"), 
+                 stringsAsFactors = F)
+
+tars <- tars$HGNC.symbol[tars$Type == "gpcr"]
+tars <- tars[! tars == ""]
+tars <- tars[!duplicated(tars)]
+
+gpr <- unique(c(gpr, uniprot, tars))
+
+## 2456
+```
+
+### Percentile of GPCRs across immune cells
+```{r}
+# gprData <- crcSmart[rownames(crcSmart) %in% gpr, ]
+# 
+# ## get only immune cells
+# gprMeta <- metaSmart %>%
+#   filter(!Global_Cluster %in% c("Epithelial cell", "Fibroblast", "Malignant cell")) %>%
+#   data.frame()
+# 
+# gprData <- gprData[, gprMeta$CellName]
+# 
+# 
+# 
+# b_Pct <-
+#   rowQuantiles(gprData[, grepl("B cell", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# cd4_Pct <-
+#   rowQuantiles(gprData[, grepl("CD4", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# cd8_Pct <-
+#   rowQuantiles(gprData[, grepl("CD8", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# ilc_Pct <-
+#   rowQuantiles(gprData[, grepl("ILC3", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# mye_Pct <-
+#   rowQuantiles(gprData[, grepl("Myeloid", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# nk103_Pct <-
+#   rowQuantiles(gprData[, grepl("NK_CD103", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# nk16_Pct <-
+#   rowQuantiles(gprData[, grepl("NK_CD16", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# nkGzm_Pct <-
+#   rowQuantiles(gprData[, grepl("NK_GZMK", gprMeta$Cell.Annotation)], probs = 0.1)
+# 
+# 
+# 
+# pctData <- data.frame(cbind(
+#   b_Pct,
+#   cd4_Pct,
+#   cd8_Pct,
+#   ilc_Pct,
+#   mye_Pct,
+#   nkGzm_Pct,
+#   nk103_Pct,
+#   nk16_Pct
+# ))
+# 
+# ## remove rows with zeros
+# pctData <- pctData[! rowSums(pctData) == 0, ]
+
+# write.table(pctData, paste0(outPath, "Zhang_CRC_GPCRs_Percentile0.1_ImmuneCells.txt"), row.names = T, sep = "\t")
+# 
+# write.table(gprData, paste0(outPath, "Zhang_CRC_GPCRs_Expression_ImmuneCells.txt"), row.names = T, sep = "\t")
+# 
+# write.table(gprMeta, paste0(outPath, "Zhang_CRC_MetaData_ImmuneCells_forGPCRs.txt"), row.names = T, sep = "\t")
+```
+
+## Read signatures
+Read signatures ontained from Collins et al. as well as the processed immune signatures I have collected.
+
+```{r}
+###------------------------- Sigs from Collins
+
+library(singscore)
+CollinsPath <- "/Users/mfor0011/Documents/projects/Monash/NK_Bulk/output/Collins/"
+
+collinsSig <-
+  read.table(
+    paste0(
+      CollinsPath,
+      "Collins_Signatures_ILCs_CD56bright_CD56dim_GPCRs.txt"
+    ),
+    header = T,
+    sep = "\t"
+  )
+
+## subset to up sets
+collinsSig <- collinsSig[collinsSig$Direction == "Up", ]
+
+# "TCF7"    "BCL6"    "LEF1"    "TBX21"   "CD226"   "SLAMF1"  "TNFSF14"  "IL7R"    "IL2RA"   "IL18R1"  "CCR7"    "CXCR6"   "XCL1"
+# 
+# TBX21 -- more in CX3CR1
+# LEF1, TCF7, CCR7, SLAMF1, IL7R
+
+###----------------- Sigs from immune and tum and TRMs
+
+sigsImmune <- readRDS(paste0(sigPath, "SigLists_Immune.RDS"))
+
+## This includes TRM sigs in several tissues (lung, liver, skin, brain, gut) 
+## as well as TEM and TCM
+sigsTRM <- readRDS(paste0(sigPath, "TRM_signatures_List.RDS"))
+## subset to Up genes only; Gut_Up has 124 genes
+sigsTRM_tissue <- sigsTRM$TRM_Tissues[grepl("Up", sigsTRM$TRM_Tissues$Signature), ]
+sigsTRM_tissue <- sigsTRM_tissue[!sigsTRM_tissue$Signature %in% c("TCM_Up", "TEM_Up"), ]
+sigsTRM_tissue <- sigsTRM_tissue[complete.cases(sigsTRM_tissue$HGNC.symbol), ]
+
+sigsTRM_gut <- sigsTRM_tissue[sigsTRM_tissue$Signature == "Gut_Up", ]
+
+sigsTRM_gut$HGNC.symbol[sigsTRM_gut$MGI.symbol == "Cd244"] <- "CD244"
+sigsTRM_gut$HGNC.symbol[sigsTRM_gut$MGI.symbol == "Gpr132"] <- "GPR132"
+sigsTRM_gut$HGNC.symbol[sigsTRM_gut$MGI.symbol == "Gp49a"] <- "LILRA5"
+sigsTRM_gut$HGNC.symbol[sigsTRM_gut$MGI.symbol == "Lilrb4"] <- "LILRB4"
+
+Gut_TRM_genes <- sigsTRM_gut$HGNC.symbol
+Gut_TRM_genes <- Gut_TRM_genes[! duplicated(Gut_TRM_genes)]
+Gut_TRM_genes <- Gut_TRM_genes[complete.cases(Gut_TRM_genes)]
+Gut_TRM_genes <- c(Gut_TRM_genes, "XCL1")
+
+sigsImmune <- c(sigsImmune, list(TRM_Gut = Gut_TRM_genes))
+
+sigsTum <- readRDS(paste0(sigPath, "SigLists_Tumour.RDS"))
+
+
+CD8_TEX_JA <- sigsImmune$T.CD8.EXHAUSTED
+CD4_TEX_JA <- sigsImmune$T.CD4.EXHAUSTED
+TEX_ImmuneSig <- sigsImmune$ExhaustedT   ## check where it comes from
+
+###----------------------- Sigs from Guo (NSCLC)
+
+CD8_TEX_Guo <- read.csv(paste0(sigPath, "../TRM/Guo_NSCLC/CD8_TEX_Guo.csv"),
+         stringsAsFactors = F)
+CD4_TEX_Guo <- read.csv(paste0(sigPath, "../TRM/Guo_NSCLC/CD4_TEX_Guo.csv"),
+         stringsAsFactors = F)
+
+##----------------------- Sigs from Li et al Melanoma
+
+CD8_Dysfunc_Li <- read.csv( "/Users/mfor0011/Documents/data/signatures/TRM/Li_Melanoma/Li_Melanoma_CD8Dysfunctional.csv",
+         stringsAsFactors = F)
+CD4_TregsTum_Li <- read.csv( "/Users/mfor0011/Documents/data/signatures/TRM/Li_Melanoma/Li_Melanoma_Tregs_vs_naive.csv",
+         stringsAsFactors = F)
+
+###------------------------- Sigs from Corridoni (Colitis)
+# We subset to Trm, IL26 (similar to exhausted cells), Double Positive(DP) cells (CD8 Tregs!), and IEL cells (TYROBP+/-), as well as GZMK-eff(2).
+
+
+corridoni <- read.csv(paste0(sigPath, "../TRM/Corridoni_Colitis_ClusterMarkers.csv"), stringsAsFactors = F)
+
+
+corri <- corridoni[corridoni$Cluster %in% c("Trm", 
+                                            "CD8+ CD4+ FOXP3+", 
+                                            "GZMK+ Effectors (2)",
+                                            "IL26+", 
+                                            "TYROBP- IELs", 
+                                            "TYROBP+ IELs"), ]
+
+## subset to those with higher logFC and lower FDR
+plot(corri$avg_logFC, -log10(corri$FDR))
+
+corri <- corri %>% filter(FDR < 0.05 & avg_logFC > 0.3)
+
+## 583
+corriGenes <- unique(corri$Gene)
+
+###------------------------- Sigs from From Nicole's paper
+## DEG shared across all cell types and tissues
+
+resident3Genes <- c("RGS1", "CXCR6", "ITGAE")
+
+## DEGs shared between trNK cells in lung and BM, but not with CD8+ TRM
+residentNK_lungBM_notTRM <- c(
+  "IFNG",
+  "STK16",
+  "KIAA1671",
+  "ATXN1",
+  "CCL5",
+  "MTFP1",
+  "AGTRAP",
+  "IKZF3",
+  "RGS2",
+  "PLA2G16",
+  "CCDC167",
+  "GZMA"
+)
+
+
+residentNK_lungOnly <- c(
+  "LGALS3",
+  "HLA-DQA2",
+  "HLA-DRB5",
+  "HLA-DQA1",
+  "HLA-DQB1",
+  "LGALS1",
+  "HLA-DRB1",
+  "HLA-DMA",
+  "ANXA2",
+  "S100A6"
+)
+ ## positive at least in two cpmparisons in the figure:
+# - NK resident (lung/BM) and TRM (lung and spleen)
+
+residentGenes <-  as.character(quote(
+  c(
+    RGS1,
+    CXCR6,
+    ITGAE,
+    ALOX5AP,
+    SLC6A6,
+    DAPK2,
+    GLIPR1,
+    TENT5C,
+    CD96,
+    METTL9,
+    SPRY2,
+    ZNF331,
+    IFNG,
+    STK16,
+    KIAA1671,
+    ATXN1,
+    CCL5,
+    MTFP1,
+    AGTRAP,
+    IKZF3,
+    RGS2,
+    PLA2G16,
+    CCDC167,
+    GZMA,
+    ITGA1,
+    JAML,
+    KRT81,
+    LAG3,
+    HSPA1A,
+    KRT86,
+    PERP,
+    GLUL,
+    CITED2,
+    TBCD,
+    SAMSN1,
+    LDLRAD4,
+    CYTIP,
+    PTPN22,
+    PLP2,
+    IRF4,
+    CAMK4,
+    RBPJ,
+    ITM2C,
+    FRMD4B,
+    CD82,
+    DUSP4,
+    ZNF683
+  )
+))[-1]
+
+
+
+##---- only in Trm:
+lungSpleenTRM <-  as.character(quote(
+  c(
+    ITGA1,
+    JAML,
+    KRT81,
+    LAG3,
+    HSPA1A,
+    KRT86,
+    PERP,
+    GLUL,
+    CITED2,
+    TBCD,
+    SAMSN1,
+    LDLRAD4,
+    CYTIP,
+    PTPN22,
+    PLP2,
+    IRF4,
+    CAMK4,
+    RBPJ,
+    ITM2C,
+    FRMD4B,
+    CD82,
+    DUSP4,
+    ZNF683,
+    RGS1,
+    CXCR6,
+    ITGAE,
+    ALOX5AP,
+    SLC6A6,
+    DAPK2,
+    GLIPR1,
+    TENT5C,
+    CD96,
+    METTL9,
+    SPRY2,
+    ZNF331,
+    ## In spleen
+    EGR1,
+    Aff3,
+    IFNG
+  )
+))[-1]
+
+## read all signatures from Nichole
+resNichole <- read.csv(paste0(sigPath, "../TRM/TRNK_Nichole_LungSpleenBM.csv"),
+                           stringsAsFactors = F)
+
+## get logFC> 0
+resNichole <- resNichole[resNichole$log2FoldChange > 0, ]
+
+# They all are  NKG2A+CD16- NK cells , so we remove these:
+  
+resNichole$Comparison <- gsub(" NKG2A\\+CD16\\- NK cells", "", resNichole$Comparison )
+resNichole$Comparison <- gsub(" NKG2A\\+CD16\\-", "", resNichole$Comparison )
+resNichole$Comparison <- gsub(" NK cells", "", resNichole$Comparison )
+
+table(resNichole$Comparison)
+## there is only one genes for CD69+CD49a+CD103+ versus CD69+CD49a+CD103-, which we remove: HSPA1A
+resNichole[resNichole$Comparison == "CD69+CD49a+CD103+ versus CD69+CD49a+CD103-", ]
+resNichole <- resNichole[! resNichole$Comparison == "CD69+CD49a+CD103+ versus CD69+CD49a+CD103-", ]
+
+resNicholeSigs <- sapply(unique(resNichole$Comparison), function(x){
+  d0 <- resNichole[resNichole$Comparison == x, ]
+  return(as.character(d0$Gene.name))
+})
+
+names(resNicholeSigs) <- c(
+  "CD69pCD49apCD103p_vs_CD69n",
+  "CD69pCD49apCD103n_vs_CD69n",
+  "CD69sp_vs_CD69n",
+  "CD69pCD49apCD103p_vs_CD69sp",
+  "CD69pCD49apCD103n_vs_CD69sp"
+)
+
+
+###-------------------- Signatures from Kallies
+
+
+# The below list obtained from the below code
+# KalliesSigs <-
+#   list(
+#     Tex = Tex,
+#     Tpex = Tpex,
+#     TRM_IDs_up = TRM_IDs_up,
+#     ExhCore = ExhCore
+#   )
+
+KalliesSigs <- readRDS( "../output/Zhang/Kallies_Sigs_MouseHumanSymbols.RDS")
+
+Tex <- KalliesSigs$Tex
+Tpex <- KalliesSigs$Tpex
+TRM_IDs_up <- KalliesSigs$TRM_IDs_up
+ExhCore <- KalliesSigs$ExhCore
+
+
+##---- NK genes from review paper:
+nkGenes <- as.character(quote(
+  c(
+    ##------- NK receptor genes:
+    ## PB CD56bright
+    KLRD1,
+    ## KLRD1  is the same as CD94
+    KLRF1,
+    ## KLRF1 is the same as NKp80
+    NCAM1,
+    ## same as CD56 also in resident NK, not in Kidney
+    IL2RA,
+    IL7RA,
+    KIT,
+    ## CD117
+    SELL,
+    ## CD62L
+    NKG2A,
+    ## in most resident NKs but not in uterine, and not in CD56 dim
+    ITGA5,
+    ## CD49e
+    CXCR3,
+    CCR7,
+    NCR1,
+    ## NKp46
+    
+    ## PB CD56dim
+    FCGR3A,
+    ## CD16
+    ##KIRs  also in lung and uterine resident NK
+    KIR3DL3,
+    KIR2L3,
+    KIR2DP1,
+    KIR2DL1,
+    KIR3DP1,
+    KIR2DL4,
+    KIR3DL1,
+    KIR2DS4,
+    KIR3DL2,
+    KIR2DS1,
+    KIR2DS2,
+    KIR2DS3,
+    KIR2DS5,
+    KIR2DL2,
+    KIR2DL5,
+    KIR3DS1,
+    S1PR5,
+    ## S1P5
+    CX3CR1,
+    CXCR2,
+    CXCR1,
+    ## PB adaptive NK:
+    CD2,
+    KLRC2,
+    ## NKG2C
+    LILRB1,
+    ## CD85j
+    B3GAT1,
+    ## CD57
+    ## Bone marrow , SLT,Gut:
+    ITGA1,
+    ## CD49a,
+    ITGAE,
+    ## CD103,
+    CD69,
+    CCR5,
+    ## not in lung, uterine and kidney
+    CXCR6,
+    ## not in lung, uterine and kidney
+    ## Uterine:
+    CD9,
+    ##----- NK secretory proteins
+    IFNG,
+    ## In PB CD56bright and PB adaptive NK, and not resident NK
+    PRF1,
+    ## In PB CD56dim
+    GZMA,
+    GZMB,
+    GZMH,
+    GZMK,
+    GZMM ## In PB CD56dim)
+  )
+)) [-1]
+
+
+## from de Andrade:
+# NK cells are: CD45+CD56+CD3–CD14–CD15–CD163–
+"/Users/mfor0011/Documents/data/signatures/ProcessedSigs/../TRM/ILCs_NK/"
+# From Björklund et al https://www-nature-com.ezproxy.lib.monash.edu.au/articles/ni.3368
+
+# mle: log2 fold expression difference value, reported as maximum likelihood estimate (mle)
+# lb, ub: 95% lower bound (lb) and upper bound (ub) of the log2 fold expression difference value
+# ce: conservative estiamte of the log2 fold expression difference value (upper or lower bound, whichever is closer to 0, or 0 if the 95% confidence interval includes 0)
+# Z: statistical significance of the expression differences, expressed as a signed Z score (can be directly converted to P values; roughly a p-value of 1e-2 would correspond to a Z score around 2.3, and a p-value of 1e-3 to 3.1; One can convert Z scores back to p-values using pnorm(Z,lower.tail=F) for upregulated genes and pnorm(Z,lower.tail=T) for downregulated genes; Z scores are signed, so that the positive values correspond to up-regulated genes, negative to downregulated)
+# cZ: Z score adjusted for multiple hypothesis testing
+
+nk_Bjorklund <- read.csv(paste0(sigPath, "../TRM/ILCs_NK/NK_vs_ILCs_Bjorklund.csv"),
+                         stringsAsFactors = F)
+ILC1_Bjorklund <- read.csv(paste0(sigPath, "../TRM/ILCs_NK/ILC1_vs_ILC2.3_Bjorklund.csv"),
+                         stringsAsFactors = F)
+ILC2_Bjorklund <- read.csv(paste0(sigPath, "../TRM/ILCs_NK/ILC2_vs_ILC1.3_Bjorklund.csv"),
+                         stringsAsFactors = F)
+ILC3_Bjorklund <- read.csv(paste0(sigPath, "../TRM/ILCs_NK/ILC3_vs_ILC1.2_Bjorklund.csv"),
+                         stringsAsFactors = F)
+
+NK_vs_ILCs <- nk_Bjorklund[nk_Bjorklund$pvalue2sided.adj < 0.05 & 
+                     nk_Bjorklund$mle > 2, ]
+
+ILC1_vs_ILC2.3 <- ILC1_Bjorklund[ILC1_Bjorklund$pvalue2sided.adj < 0.05 & 
+                     ILC1_Bjorklund$mle > 2, ]
+
+ILC2_vs_ILC1.3 <- ILC2_Bjorklund[ILC2_Bjorklund$pvalue2sided.adj < 0.05 & 
+                     ILC2_Bjorklund$mle > 2, ]
+
+ILC3_vs_ILC1.2 <- ILC3_Bjorklund[ILC3_Bjorklund$pvalue2sided.adj < 0.01 & 
+                     ILC3_Bjorklund$mle > 3, ]
+
+dim(NK_vs_ILCs)
+dim(ILC1_vs_ILC2.3)
+dim(ILC2_vs_ILC1.3)
+dim(ILC3_vs_ILC1.2)
+
+```
+
+```{r}
+# Basic function to convert mouse to human gene names
+# convertMouseGeneList <- function(x) {
+#   require("biomaRt")
+#   human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+#   mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+#   
+#   genesV2 = getLDS(
+#     attributes = c("mgi_symbol"),
+#     filters = "mgi_symbol",
+#     values = x ,
+#     mart = mouse,
+#     attributesL = c("hgnc_symbol"),
+#     martL = human,
+#     uniqueRows = T
+#   )
+#   
+#   # # humanx <- unique(genesV2[, 2])
+#   # humanx <- genesV2[, 2]
+#   # # Print the first 6 genes found to the screen
+#   # print(head(humanx))
+#   return(genesV2)
+# }
+
+
+##------- read TRM
+# TRM <-
+#   read.csv(
+#       "/Users/mfor0011/Documents/data/signatures/TRM/Kallies/TRM_signature_Kallies.csv",
+#     stringsAsFactors = F,
+#     check.names = F
+#   )
+# 
+# ## get only up set (84 genes):
+# # TRM <- TRM[, 2:3] %>% 
+# #   filter(Direction == 1)
+# 
+# ## map to human genes 
+# Trm_mouse <- convertMouseGeneList(TRM$GeneName)
+# 
+# ## curate  a few genes that seem to map to more than one human symbol:
+# Trm_mouse[Trm_mouse$MGI.symbol %in% Trm_mouse[duplicated(Trm_mouse$MGI.symbol), "MGI.symbol"], ]
+# 
+# ## 78 genes
+# Trm_mouse2 <- Trm_mouse %>% 
+#   filter(
+#     ! (MGI.symbol == "Sik1" & HGNC.symbol %in% c("SIK1B"))) %>% 
+#   filter(
+#     ! (MGI.symbol == "Xcl1" & HGNC.symbol %in% c("XCL2"))) 
+# 
+# TRM_IDs <- merge(TRM, Trm_mouse2, by.x = "GeneName", by.y = "MGI.symbol", all.x = T)
+# 
+# TRM_IDs$HGNC.symbol[TRM_IDs$GeneName == "Zfp683"] <- "ZNF683"
+# 
+# ## remove genes that do not map to human as well duplicated gene names:
+# ## 169 genes
+# TRM_IDs2 <- TRM_IDs %>%
+#   filter(complete.cases(HGNC.symbol) & !duplicated(HGNC.symbol))
+# 
+# 
+# ## take only up sets:
+# TRM_IDs_up <- TRM_IDs2 %>% 
+#   filter(Direction == 1)
+#
+#
+# ##------- read TPEX and TEX signatures:
+# TexTpex <-
+#   read.csv(
+#       "/Users/mfor0011/Documents/data/signatures/TRM/Kallies/TPEX_vs_TEX_Kallies.csv",
+#     stringsAsFactors = F,
+#     check.names = F
+#   )
+# 
+# ## 344 genes
+# TexTpex <- TexTpex %>% 
+#   arrange(logFC) %>%
+#   filter(abs(logFC) > 2 & adj.P.Val < 0.01)
+# 
+# ## map to human genes using the function here: https://www.r-bloggers.com/converting-mouse-to-human-gene-names-with-biomart-package/
+# 
+# TexTpex_mouse <- convertMouseGeneList(TexTpex$Symbol)
+# 
+# ## curate  a few genes that seem to map to more than one human symbol:
+# 
+# TexTpex_mouse[TexTpex_mouse$MGI.symbol %in% TexTpex_mouse[duplicated(TexTpex_mouse$MGI.symbol), "MGI.symbol"], ]
+# 
+# TexTpex_mouse2 <- TexTpex_mouse %>% 
+#   filter(
+#     ! (MGI.symbol == "Ccl4" & HGNC.symbol %in% c("CCL4L2"))) %>% 
+#      filter( ! (MGI.symbol == "Ccl3" & HGNC.symbol %in% c("CCL18", "CCL3L1", "CCL3L3"))) %>% 
+#       filter(! (MGI.symbol == "Xcl1" & HGNC.symbol %in% c("XCL2")))
+# 
+# TexTpexIDs <- merge(TexTpex, TexTpex_mouse2, by.x = "Symbol", by.y = "MGI.symbol", all.x = T)
+# 
+# 
+# ## remove genes that do not map to human as well duplicated gene names:
+# ## 312 genes
+# TexTpexIDs2 <- TexTpexIDs %>%
+#   filter(complete.cases(HGNC.symbol) & !duplicated(HGNC.symbol))
+# 
+# 
+# ## + logFC are progenitor
+# Tpex <- TexTpexIDs2 %>% 
+#   filter(logFC > 0)
+# 
+# 
+# ## - logFC are Terminally exhausted cells
+# Tex <- TexTpexIDs2 %>% 
+#   filter(logFC < 0)
+#
+##---------------- Common Exh genesTPEX and TEX signatures:
+# TexhCore <-
+#   read.csv(
+#       "/Users/mfor0011/Documents/data/signatures/TRM/Kallies/Core_Exhaustion_Signature_Kallies.csv",
+#     stringsAsFactors = F,
+#     check.names = F
+#   )
+# 
+# ## map to human genes 
+# 
+# TexhCore_mouse <- convertMouseGeneList(TexhCore$Symbol)
+# 
+# ## curate  a few genes that seem to map to more than one human symbol:
+# 
+# TexhCore_mouse[TexhCore_mouse$MGI.symbol %in% TexhCore_mouse[duplicated(TexhCore_mouse$MGI.symbol), "MGI.symbol"], ]
+# 
+# TexhCore_mouse2 <- TexhCore_mouse %>%
+#   filter(!(MGI.symbol == "Prss2" &
+#              HGNC.symbol %in% c("PRSS1"))) %>%
+#   filter(!(MGI.symbol == "Trbc1" &
+#              HGNC.symbol %in% c("TRBC2"))) %>%
+#   filter(!(MGI.symbol == "Usp18" &
+#              HGNC.symbol %in% c("USP41"))) %>%
+#   filter(!(MGI.symbol == "Hspa1a" &
+#              HGNC.symbol %in% c("HSPA1B"))) %>%
+#   filter(!(MGI.symbol == "Rtl8c" &
+#              HGNC.symbol %in% c("RTL8A", "RTL8B")))
+# 
+# TexhCoreIDs <- merge(TexhCore, TexhCore_mouse2, by.x = "Symbol", by.y = "MGI.symbol", all.x = T)
+# 
+# 
+# ## remove genes that do not map to human as well duplicated gene names:
+# ## 261 genes
+# TexhCoreIDs2 <- TexhCoreIDs %>%
+#   filter(complete.cases(HGNC.symbol) & !duplicated(HGNC.symbol))
+# 
+# ## get those that have high expression in both TEX and TPEX compared to the other two conditions:
+# 
+# ## 124 genes
+# ExhCore <- TexhCoreIDs2 %>% 
+#   filter(`TEX, d21` > `Effectors, d5` & 
+#           `TEX, d21` > `Memory ID3-, d21` & 
+#           `TPEX, d21` > `Effectors, d5` & 
+#           `TPEX, d21` > `Memory ID3-, d21` )
+
+
+
+
+# KalliesSigs <-
+#   list(
+#     Tex = Tex,
+#     Tpex = Tpex,
+#     TRM_IDs_up = TRM_IDs_up,
+#     ExhCore = ExhCore
+#   )
+# 
+# saveRDS(KalliesSigs, paste0(outPath, "Kallies_Sigs_MouseHumanSymbols.RDS"))
+```
+
+
+
+#### Overlap between signatures
+```{r}
+intersect(ExhCore$Symbol, Tex$Symbol)
+```
+
+```{r}
+intersect(TRM_IDs_up$HGNC.symbol, Tex$HGNC.symbol)
+```
+
+
+```{r}
+intersect(ExhCore$HGNC.symbol, Tpex$HGNC.symbol)
+```
+
+```{r}
+intersect(TRM_IDs_up$HGNC.symbol, Tpex$HGNC.symbol)
+```
+
+
+```{r}
+intersect(ExhCore$HGNC.symbol, TRM_IDs_up$HGNC.symbol)
+```
+
+
+
+# CD8 analysis
+```{r}
+# subSmartCD8 <- crcSmart[,
+#                      grepl("CD8", metaSmart$Sub_Cluster) ]
+
+subMetaSmartCD8 <- metaSmart[grepl("CD8", metaSmart$Sub_Cluster), ]
+
+rownames(subMetaSmartCD8) <- subMetaSmartCD8$CellName
+
+# all(subMetaSmartCD8$CellName == colnames(subSmartCD8))
+
+
+subMetaSmartCD8$Sub_Cluster <- as.character(subMetaSmartCD8$Sub_Cluster)
+
+# subMetaSmartCD8$Sub_Cluster <- sapply(subMetaSmartCD8$Sub_Cluster, function(x){
+#   unlist(strsplit(x, "_"))[2]
+# })
+```
+
+## Define genes for CD8 analysis
+Here we put together all the signature from CD8
+```{r}
+# outPath
+# cd8 <- readRDS(paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_2020Aug.RDS"))
+
+# subSmartCD8 <- as.matrix(GetAssayData(cd8, "data"))
+
+## 690 genes  -- 1378
+# CD8Genes <-
+#   unique(
+#     c(
+#       corriGenes,
+#       CD8_TEX_Guo$Gene.Symbol,
+#       CD8_TEX_JA,
+#       TEX_ImmuneSig,
+#       sigsImmune$TRM_review, 
+#       
+#       ## added these
+#       CD8_Dysfunc_Li$X,
+#       sigsImmune$TerminallyDiff_T,
+#       lungSpleenTRM,
+#       ## from mouse:
+#       Tex$HGNC.symbol,
+#       Tpex$HGNC.symbol,
+#       ExhCore$HGNC.symbol,
+#       TRM_IDs_up$HGNC.symbol,
+#       # Gut_TRM_genes ## gut, liver, lung, skin, brain
+#       unique(sigsTRM_tissue$HGNC.symbol)
+#     )
+#   )
+
+TcellGenes <-
+  unique(
+    c(
+      corriGenes,
+      CD8_TEX_Guo$Gene.Symbol,
+      CD8_TEX_JA,
+      TEX_ImmuneSig,
+      sigsImmune$TRM_review, 
+      
+      ## added these
+      CD8_Dysfunc_Li$X,
+      sigsImmune$TerminallyDiff_T,
+      lungSpleenTRM,
+      
+      ## from mouse:
+      Tex$HGNC.symbol,
+      Tpex$HGNC.symbol,
+      ExhCore$HGNC.symbol,
+      TRM_IDs_up$HGNC.symbol,
+      
+      # Gut_TRM_genes ## gut, liver, lung, skin, brain
+      unique(sigsTRM_tissue$HGNC.symbol), 
+      
+      ## from CD4:
+      CD4_TEX_Guo$Gene.Symbol,
+      CD4_TEX_JA,
+      CD4_TregsTum_Li$X
+      
+    )
+  )
+
+CD8Genes <- TcellGenes
+ 
+
+
+# xx <- c(
+#   # CD8_TEX_Guo$Gene.Symbol,
+#       # CD8_TEX_JA,
+#       # TEX_ImmuneSig,
+#       # sigsImmune$TRM_review, 
+#       # CD8_Dysfunc_Li$X,
+#       CD4_TEX_Guo$Gene.Symbol,
+#       CD4_TEX_JA,
+#       CD4_TregsTum_Li$X
+#       
+#       )
+      # sigsImmune$TerminallyDiff_T)
+## 1353/1502 genes exist in the data
+```
+
+## Cross correlation between genes
+```{r}
+## 625 2405
+
+GoGAPS_path <- "../data/CoGAPS/Tcell_CoGAPS/"
+
+# cd4 <- readRDS(paste0(GoGAPS_path, "cd4_CoGaps_nsets_5.rds"))
+cd8 <- readRDS(paste0(GoGAPS_path, "cd8_CoGaps_nsets_10.rds"))
+subSmartCD8 <- as.matrix(GetAssayData(cd8))
+
+## 1353
+CD8Expr <- subSmartCD8[rownames(subSmartCD8) %in% CD8Genes, ]
+
+corMat <- cor(t(CD8Expr), method = "spearman")
+
+png(paste0(figPath, "CD8_TrmTexGenes1353_CrossCorr_20200928.png"), height = 700, width = 800 )
+ComplexHeatmap::Heatmap(corMat,
+                        show_row_names = F,
+                        show_column_names = F, 
+                        col = circlize::colorRamp2(
+                          c(min(corMat), 0, max(corMat)), c("yellow3", "white", "navy")), name = "Cor")
+
+dev.off()
+```
+
+```{r}
+# library(Hmisc)
+flattenCorrMatrix <- function(cormat
+                              # pmat
+) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut]
+    # ,
+    # p = pmat[ut]
+  )
+}
+
+# cor_mat <- rcorr(t(CD8Expr), type = "spearman")
+corStat <- flattenCorrMatrix(corMat)
+head(corStat[order(corStat$cor, decreasing = T), ], )
+
+```
+
+```{r}
+# trmMinGenes <- c("ZNF683", "CD69", "ITGAE", "ITGA1", "CXCR6", "RGS1")
+trmMinGenes <- c( "CD69", "ITGAE", "ITGA1", "RGS1")
+# exhMinGenes <- c("LAG3", "HAVCR2", "PDCD1", "CTLA4", "LAYN", "CXCL13")
+exhMinGenes <- c("HAVCR2", "PDCD1", "CTLA4", "LAYN", "CXCL13")
+```
+
+
+
+```{r}
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(Sub_Cluster = as.character(subMetaSmartCD8$Sub_Cluster),
+                                    col = list(Sub_Cluster = cd8Cols))
+
+
+pdf(paste0(figPath, "Heatmap_ZhangSmart_SelectedCorr_CD8_MinGenes_TRM_TEX_InCD8_20200928_2.pdf"), height = 3, width = 8)
+ComplexHeatmap::Heatmap(subSmartCD8[trmMinGenes,],
+# ComplexHeatmap::Heatmap(subSmartCD8[c("CD69", "ITGAE", "ITGA1", "RGS1"),],
+                        show_column_names = F, 
+                        top_annotation = sampleAnnHm, 
+                        col = viridis::plasma(100), 
+                        name = "logExpr")
+
+ComplexHeatmap::Heatmap(subSmartCD8[c(exhMinGenes),],
+# ComplexHeatmap::Heatmap(subSmartCD8[c("HAVCR2", "PDCD1", "CTLA4", "LAYN", "CXCL13"),],
+                        show_column_names = F, 
+                        top_annotation = sampleAnnHm, 
+                        col = viridis::plasma(100), 
+                        name = "logExpr")
+
+dev.off()
+```
+
+
+```{r}
+## This threshold means that we do not get anything from ZNF683 and CXCR6 - so we remove them from the initial lists
+trmCors <- corStat %>% filter(cor > 0.35 & (row %in% trmMinGenes | column %in% trmMinGenes))
+trmGenes <- unique(c(as.character(trmCors$row),
+                     as.character(trmCors$column)))
+
+trmCors1 <- vector()
+
+for(i in trmMinGenes) {
+  currentCors <- corStat %>%
+    filter(row == i | column == i) %>%
+    arrange(-cor) %>%
+    head(15) %>%
+    data.frame()
+  
+  print(currentCors)
+  trmCors1 <-
+    unique(c(trmCors1, c(currentCors$row, currentCors$column)))
+}
+
+## LAG3 does not fit this criteria, so we could remove that too
+## CTLA4 only gives a couple of genes
+texCors <- corStat %>% filter(cor > 0.25 & (row %in% exhMinGenes | column %in% exhMinGenes))
+texGenes <- unique(c(as.character(texCors$row),
+                     as.character(texCors$column)))
+
+
+texCors1 <- vector()
+
+for(i in exhMinGenes) {
+  currentCors <- corStat %>%
+    filter(row == i | column == i) %>%
+    arrange(-cor) %>%
+    head(15) %>%
+    data.frame()
+  
+  print(currentCors)
+  
+  texCors1 <-
+   unique(c(texCors1, c(currentCors$row, currentCors$column)))
+}
+
+
+
+# trmGenes <- unique(c(trmMinGenes, trmGenes))
+# texGenes <- unique(c(exhMinGenes, texGenes))
+
+trmGenes
+texGenes
+```
+
+Some genes  are common in both:
+ "CXCR6"   "DUSP4"   "PHLDA1"  "RGS1"    "SAMSN1" "KIR2DL4" "ATP8B4"
+ 
+ Exh --> DUSP4
+ Res --> RGS1, SAMSN1, KIR2DL4, ATP8B4
+ 
+ remove --> CXCR6, PHLDA1
+```{r}
+comGs <- intersect(texGenes, trmGenes)
+
+comGs
+
+# rmGenes <- c("CXCR6", "PHLDA1")
+# trmGenes <- trmGenes[ ! trmGenes %in% rmGenes & ! trmGenes %in% "DUSP4"]
+# 
+# texGenes <-
+#   texGenes[!texGenes %in% rmGenes &
+#              !texGenes %in% c("RGS1", "SAMSN1", "KIR2DL4", "ATP8B4")]
+
+# trmGenes <- unique(c(trmMinGenes, trmGenes))
+# texGenes <- unique(c(exhMinGenes, texGenes))
+
+trmGenes <- trmGenes[! trmGenes %in% comGs]
+texGenes <- texGenes[! texGenes %in% comGs]
+```
+
+```{r}
+CD8Expr <- subSmartCD8[unique(c(trmGenes, texGenes)), ]
+
+corMat <- cor(t(CD8Expr), method = "spearman")
+
+markerCols <- c("gray90", "gray20")
+names(markerCols) <- c("Trm", "Exh")
+
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(Marker = as.character(c(rep("Trm", length(trmGenes)), rep("Exh", length(texGenes)))),
+                                    col = list(Marker = markerCols))
+
+
+pdf(paste0(figPath, "CrossCor_ZhangSmart_CD8_TrmTexGenes60_rmComGenes_20200928.pdf"), height = 11, width = 12)
+ComplexHeatmap::Heatmap(corMat,
+                        show_column_names = T, 
+                        top_annotation = sampleAnnHm, 
+                        col = circlize::colorRamp2(
+                          c(min(corMat), 0, max(corMat)), c("yellow3", "white", "navy")), 
+                        # col = viridis::plasma(100), 
+                        name = "Rho")
+dev.off()
+
+
+library(PMA)
+
+cca_cd8_init <- CCA(
+  t(subSmartCD8[rownames(subSmartCD8) %in% trmGenes, ]), 
+   t(subSmartCD8[rownames(subSmartCD8) %in% texGenes, ]))
+
+trmCorGenes <- colnames(t(subSmartCD8[rownames(subSmartCD8) %in% trmGenes, ]))[which(cca_cd8_init$u[, 1] <= -0.1)]
+# "ITGA1"   "ITGAE"   "RGS2"    "LDLRAD4" "CAPG"  
+texCorGenes <- colnames(t(subSmartCD8[rownames(subSmartCD8) %in% texGenes, ]))[which(cca_cd8_init$v[, 1] <= -0.1)]
+# "LAYN"   "GOLIM4" "ENTPD1"
+##---- remove genes that have non-zero values in CCA:
+
+trmGenes <- trmGenes[! trmGenes %in% trmCorGenes]
+texGenes <- texGenes[! texGenes %in% texCorGenes]
+
+
+CD8Expr <- subSmartCD8[unique(c(trmGenes,texGenes)), ]
+
+corMat <- cor(t(CD8Expr), method = "spearman")
+
+
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(Marker = as.character(c(rep("Trm", length(trmGenes)), rep("Exh", length(texGenes)))),
+                                    col = list(Marker = markerCols))
+
+pdf(paste0(figPath, "CrossCor_ZhangSmart_CD8_TrmTexGenes52_rmComGenes_rmCCA_20200928.pdf"), height = 10, width = 11)
+ComplexHeatmap::Heatmap(corMat,
+                        show_column_names = T, 
+                        top_annotation = sampleAnnHm, 
+                        col = circlize::colorRamp2(
+                          c(min(corMat), 0, max(corMat)), c("yellow3", "white", "navy")), 
+                        # col = viridis::plasma(100), 
+                        name = "Rho")
+dev.off()
+
+```
+
+
+```{r}
+# texCors[texCors$row %in% comGs | texCors$column %in% comGs, ]
+# trmCors[trmCors$row %in% comGs | trmCors$column %in% comGs, ]
+
+# trmGenes <- trmGenes[! trmGenes %in% comGs]
+# texGenes <- texGenes[! texGenes %in% comGs]
+
+saveRDS(list(trmGenes = trmGenes, texGenes = texGenes), 
+        paste0(outPath, "Initial_Trm_Exh_Genes_CD8_Corr_20200928.RDS"))
+
+
+# trmExhGenes <- readRDS(paste0(outPath, "Initial_Trm_Exh_Genes_CD8_Corr_20200928.RDS"))
+# 
+# trmGenes <- trmExhGenes$trmGenes
+# texGenes <- trmExhGenes$texGenes
+```
+
+### Heatmap of initial signatures
+```{r}
+
+# immCells <- metaSmart$Sub_Cluster[grepl("CD8", metaSmart$Sub_Cluster)|
+#                                     grepl("NK", metaSmart$Sub_Cluster) |
+#                                     grepl("CD4", metaSmart$Sub_Cluster)|
+#                                     grepl("ILC3", metaSmart$Sub_Cluster)]
+# 
+# cellCols <- cols[1:length(unique(immCells))]
+# names(cellCols) <- unique(immCells)[order(unique(immCells))]
+# cd8Cols <- cellCols[grepl("CD8", 
+#                           names(cellCols))]
+
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(Sub_Cluster = as.character(subMetaSmartCD8$Sub_Cluster),
+                                    col = list(Sub_Cluster = cd8Cols))
+
+
+pdf(paste0(figPath, "Heatmap_ZhangSmart_SelectedCorr_CD8_TRM_TEX_InCD8_20200928.pdf"), height = 7, width = 8)
+ComplexHeatmap::Heatmap(subSmartCD8[trmGenes,],
+                        show_column_names = F, 
+                        top_annotation = sampleAnnHm, 
+                        col = viridis::plasma(100))
+
+ComplexHeatmap::Heatmap(subSmartCD8[texGenes,],
+                        show_column_names = F, 
+                        top_annotation = sampleAnnHm, 
+                        col = viridis::plasma(100))
+
+dev.off()
+```
+
+
+
+
+## Creat Seurat for SMART-seq CD8 cells
+```{r}
+# cd8 <-
+#   CreateSeuratObject(counts = subSmartCD8,
+#                      project = "Zhang_SmartSeq_CD8",
+#                      meta.data = subMetaSmartCD8,
+#                      min.cells = 5)
+# cd8[["percent.mt"]] <- PercentageFeatureSet(cd8, pattern = "^MT-")
+# 
+# cell_attrsCD8 <- cd8[[]]
+
+# saveRDS(cd8, file = paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_2020Aug.RDS"))
+
+```
+
+## Read Seurat after CoGAPS
+```{r}
+# GoGAPS_path <- "../data/CoGAPS/Tcell_CoGAPS/"
+
+# cd4 <- readRDS(paste0(GoGAPS_path, "cd4_CoGaps_nsets_5.rds"))
+# cd8 <- readRDS(paste0(GoGAPS_path, "cd8_CoGaps_nsets_10.rds"))
+
+
+cd8$MSI <- "MSS"
+cd8$MSI[cd8$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+
+cd8 <- FindVariableFeatures(cd8, selection.method = "vst", nfeatures = 2000)
+
+all.genes <- rownames(cd8)
+cd8 <- ScaleData(cd8, features = all.genes)
+
+cd8 <- RunPCA(cd8, features = VariableFeatures(object = cd8), verbose = F)
+
+cd8 <- FindNeighbors(cd8, dims = 1:15)
+cd8 <- FindClusters(cd8, resolution = 0.3, random.seed = 20200811)
+
+cd8 <- RunUMAP(cd8, dims = 1:15, n.neighbors = 30, min.dist = 0.3, seed.use = 20200811)
+
+## 9 patterns were found
+## CoGAPS 1 is Exh and COGAPS 7 and a bit CoGAPS 5 is Trm
+DimPlot(cd8)
+DimPlot(cd8, group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_1", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_2", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_3", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_4", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_5", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_6", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_7", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_8", group.by = "Sub_Cluster")
+VlnPlot(cd8, features = "CoGAPS_9", group.by = "Sub_Cluster")
+
+VlnPlot(cd8, features = "CoGAPS_1")
+VlnPlot(cd8, features = "CoGAPS_2")
+VlnPlot(cd8, features = "CoGAPS_3")
+VlnPlot(cd8, features = "CoGAPS_4")
+VlnPlot(cd8, features = "CoGAPS_5")
+VlnPlot(cd8, features = "CoGAPS_6")
+VlnPlot(cd8, features = "CoGAPS_7")
+VlnPlot(cd8, features = "CoGAPS_8")
+VlnPlot(cd8, features = "CoGAPS_9")
+
+```
+
+```{r, fig.height = 4, fig.width = 9, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <-
+  FeatureScatter(cd8,
+                 feature1 = "nCount_RNA",
+                 feature2 = "percent.mt",
+                 group.by = "Cell.Annotation", 
+                 cols = brewer.pal(8, "Set2"))
+plot2 <-
+  FeatureScatter(cd8,
+                 feature1 = "nCount_RNA",
+                 feature2 = "nFeature_RNA",
+                 group.by = "Sample", 
+                 cols = brewer.pal(9, "Set1"))
+plot1 + plot2
+
+```
+
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(
+  cd8,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 1,
+  group.by = "Sample",
+  pt.size = 0, cols = brewer.pal(9, "Set1")
+)
+```
+
+### Visualise highly Variable genes
+```{r}
+# cd8 <- FindVariableFeatures(cd8, selection.method = "vst", nfeatures = 2000)
+
+top10 <- head(VariableFeatures(cd8), 20)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(cd8)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+
+```{r, fig.height = 6, fig.width = 6}
+VizDimLoadings(cd8, dims = 1:2, reduction = "pca")
+```
+
+```{r}
+pdf(
+  paste0(figPath, "PCA_ZhangSmart_CD8_HighVarGenes_InCD8_20200928.pdf"),
+  height = 5,
+  width = 5
+)
+DimPlot(cd8, reduction = "pca", group.by = "Sub_Cluster") + 
+  scale_color_manual(values = cd8Cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8, reduction = "pca", group.by = "Tissue") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8, reduction = "pca", group.by = "Sample") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8, reduction = "pca", group.by = "MSI") + scale_color_manual(values = cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+dev.off()
+```
+
+### Run PCA on initial sig genes
+```{r}
+
+cd8TrmExh <- RunPCA(cd8, features = rownames(cd8)[rownames(cd8) %in% CD8Genes])
+# cd8TrmExh <- RunPCA(cd8, features = rownames(cd8)[rownames(cd8) %in% unique(c(trmGenes, texGenes))], verbose = F)
+
+pdf(
+  paste0(figPath, "PCA_ZhangSmart_CD8_AllTrmTexGenes1378_InCD8_20200928.pdf"),
+  height = 5,
+  width = 5
+)
+DimPlot(cd8TrmExh, reduction = "pca", group.by = "Sub_Cluster") + 
+  scale_color_manual(values = cd8Cols) + 
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8TrmExh, reduction = "pca", group.by = "Tissue") + scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8TrmExh, reduction = "pca", group.by = "Sample") + scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+DimPlot(cd8TrmExh, reduction = "pca", group.by = "MSI") + scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow = 3,
+    override.aes = list(size = 3)))
+
+dev.off()
+```
+
+
+```{r}
+cd8Trm <- RunPCA(cd8, features = rownames(cd8)[rownames(cd8) %in% trmGenes])
+cd8Tex <- RunPCA(cd8, features = rownames(cd8)[rownames(cd8) %in% texGenes])
+
+pdf(
+  paste0(figPath, "PCA_ZhangSmart_CD8_TrmGenes_Corr_rmCom_rmCCA_20200928.pdf"),
+  height = 5,
+  width = 5
+)
+DimPlot(cd8Trm, reduction = "pca", group.by = "Sub_Cluster") + scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Trm, reduction = "pca", group.by = "Tissue") + scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Trm, reduction = "pca", group.by = "Sample") +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Trm, reduction = "pca", group.by = "MSI") +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+dev.off()
+```
+
+
+```{r}
+pdf(
+  paste0(figPath, "PCA_ZhangSmart_CD8_TexGenes_Corr_rmCom_rmCCA_20200928.pdf"),
+  height = 5,
+  width = 5
+)
+DimPlot(cd8Tex, reduction = "pca", group.by = "Sub_Cluster") + 
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Tex, reduction = "pca", group.by = "Tissue") + 
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Tex, reduction = "pca", group.by = "Sample") + 
+  scale_color_manual(values = cols) +   theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+DimPlot(cd8Tex, reduction = "pca", group.by = "MSI") + 
+  scale_color_manual(values = cols) +   theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+dev.off()
+```
+
+```{r}
+# intersect(CD8Genes, corri$Gene[corri$Cluster == "Trm"])
+# 
+# intersect(CD8Genes, TRM_IDs_up$HGNC.symbol)
+# 
+# intersect(
+#   intersect(CD8Genes, TRM_IDs_up$HGNC.symbol),
+#   intersect(CD8Genes, corri$Gene[corri$Cluster == "Trm"])
+# )
+```
+
+## Score SMART-seq CD8 T cells
+```{r, message = F, warning = F}
+library(singscore)
+rd <- rankGenes(as.matrix(GetAssayData(cd8, slot = "data", assay = "RNA")))
+# 
+# trmExhGenes <- readRDS(paste0(outPath, "Initial_Trm_Exh_Genes_CD8_Corr_20200928.RDS"))
+# 
+# trmGenes <- trmExhGenes$trmGenes
+# texGenes <- trmExhGenes$texGenes
+
+scoresCollins <- sapply(unique(collinsSig$Signature), function(x){
+  currentSig <- collinsSig$Genes[collinsSig$Signature == x]
+  currentScore <- simpleScore(rankData = rd, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresCollins) <- unique(collinsSig$Signature)
+rownames(scoresCollins) <- colnames(rd)
+
+
+selImmuneSigs <- c(sigsImmune[c(
+  "TRM_Review",
+  "TRM_TGFb_Unstim_Up",
+  "TRM_TGFbIL2_Unstim_Up",
+  "TRM_TGFbIL2_IL2_Up",
+  "TRM_Nizard_Up", 
+  "TRM_Gut",
+  "ExhaustedT", 
+  "Stem_T",
+  "TerminallyDiff_T",
+  "ILC1", 
+  "Interferon_imsig", 
+  "Proliferation_imsig", 
+  "Translation_imsig", 
+  "TEM_Up",
+  "TCM_Up",
+  "NK_cur",
+  "NK",
+  "NK_Xiong",
+  "NK_ImmGene",
+  "NK_imsig",
+  "T_ImmGene",
+  "T_imsig",
+  "T_Xiong",
+  "T_gd1",
+  "T_gd2",
+  "T.CD4",
+  "T.CD8" ,
+  "T.CELL", 
+  "T.CD8.EXHAUSTED",
+  "T.CD4.EXHAUSTED",
+  "T.CD4.NAIVE",
+  "T.CD8.NAIVE",
+  "T.CD4.TREG",
+  "T.CD8.CYTOTOXIC"
+)], 
+resNicholeSigs, 
+list(resident3Genes = resident3Genes, 
+     residentGenes = residentGenes,
+     residentNK_lungOnly = residentNK_lungOnly,
+     residentNK_lungBM_notTRM = residentNK_lungBM_notTRM, 
+     TRM_lungSpleen = lungSpleenTRM, 
+     CuratedTrmGenes = trmGenes, 
+     CuratedExhGenes = texGenes, 
+     TGFbEMT = sigsTum$TGFb_EMT$tgfb_Up, 
+     CD8_TEX_Kallies = Tex$HGNC.symbol,
+     CD8_TPEX_Kallies = Tpex$HGNC.symbol,
+     CD8_ExhCore_Kallies = ExhCore$HGNC.symbol,
+     CD8_TRM_Kallies = TRM_IDs_up$HGNC.symbol,
+     CD8_Dysfunc_Li = CD8_Dysfunc_Li$X,
+     CD4_TEX_Guo = CD4_TEX_Guo$Gene.Symbol,
+     CD4_TEX_JA = CD4_TEX_JA,
+     CD4_TregsTum_Li = CD4_TregsTum_Li$X,
+     NK_vs_ILCs = NK_vs_ILCs$Gene,
+     ILC1_vs_ILC2.3 = ILC1_vs_ILC2.3$Gene,
+     ILC2_vs_ILC1.3 = ILC2_vs_ILC1.3$Gene,
+     ILC3_vs_ILC1.2 = ILC2_vs_ILC1.3$Gene
+     ))
+
+scoresImm <- sapply(names(selImmuneSigs), function(x){
+  currentSig <- selImmuneSigs[[x]]
+  currentScore <- simpleScore(rankData = rd, 
+                              upSet = currentSig, 
+                              knownDirection = T, 
+                              centerScore = F, 
+                              dispersionFun = var)
+  return(currentScore$TotalScore)
+})
+
+colnames(scoresImm) <- names(selImmuneSigs)
+colnames(scoresImm)[colnames(scoresImm) == "ILC1"] <- "ILC1_Fer"
+rownames(scoresImm) <- colnames(rd)
+
+
+
+cd8@meta.data <- data.frame(cd8@meta.data , scoresCollins)
+cd8@meta.data  <- data.frame(cd8@meta.data , scoresImm)
+
+
+scoreNames <- c(colnames(scoresImm), colnames(scoresCollins) )
+scoreNames <- scoreNames[order(scoreNames)]
+```
+
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(cd8, dims = 1:30, cells = 500, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(cd8, ndims = 40)
+```
+
+## Clustering and UMAP of CD8
+```{r}
+# cd8 <- FindNeighbors(cd8, dims = 1:15)
+# cd8 <- FindClusters(cd8, resolution = 0.3, random.seed = 20200811)
+# 
+# cd8 <- RunUMAP(cd8, dims = 1:15, n.neighbors = 30, min.dist = 0.3, seed.use = 20200811)
+```
+
+
+```{r}
+pdf(paste0(figPath, "UMAP_ZhangSmart_CD8.pdf"), height = 5, width = 5)
+DimPlot(cd8, reduction = "umap") +
+  theme_minimal() +
+  theme(legend.position = "top") + 
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+DimPlot(cd8, reduction = "umap", 
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+DimPlot(cd8, reduction = "umap", 
+        group.by = "Tissue") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") + 
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+DimPlot(cd8, reduction = "umap", 
+        group.by = "MSI") +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") + 
+  guides(color = guide_legend(
+    nrow=2, 
+    override.aes = list(size=3)))
+
+dev.off()
+```
+
+## Save data after UMAP
+```{r}
+saveRDS(cd8, file = paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_20200928_UMAP_scores.RDS"))
+
+
+# cd8 <- readRDS(paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_20200928_UMAP_scores.RDS"))
+```
+
+
+## Scatterplot of scores
+```{r}
+cell_attrsCD8 <- cd8[[]]
+
+cell_attrsCD8_Tissue <-
+  cell_attrsCD8 %>% 
+  filter(Tissue != "P") %>% 
+  ## remove a few cells that are mostly specific to blood
+  filter(! Sub_Cluster %in% c(
+    # "CD4-ANXA1",
+    # "CD4-CCR7",
+    # "CD4-FOXP3",
+    # "CD4-GNLY",
+    "CD8-GPR183",
+    "CD8-LEF1"
+  )) 
+
+lowTrmPct <- quantile(cell_attrsCD8$CuratedTrmGenes, probs = 0.6)
+highTrmPct <- quantile(cell_attrsCD8$CuratedTrmGenes, probs = 0.85)
+
+lowExhPct <- quantile(cell_attrsCD8$CuratedExhGenes, probs = 0.6)
+highExhPct <- quantile(cell_attrsCD8$CuratedExhGenes, probs = 0.85)
+
+
+textSize <- 1.4
+
+currentTheme <- theme_minimal() +
+  theme(
+    # panel.background = element_blank()
+    axis.title = element_text(size = rel(textSize)),
+    axis.text = element_text(angle = 0, size = rel(textSize)),
+    # strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black", size = 0.5),
+    legend.position = 'top',
+    # legend.title = element_text(size = rel(textSize), face = "italic"),
+    # legend.text = element_text(size = rel(textSize)),
+    legend.key.size = unit(1, 'lines'),
+    ## increase the line space
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+
+
+pdf(
+  paste0(figPath, "ScatterPlot_ZhangSmart_CD8_CuratedTRM_TEX_AllCells_lines_20200928_NoColor.pdf"),
+  height = 4.3,
+  width = 4.8
+)
+cell_attrsCD8 %>%
+  # filter(Tissue == "T") %>%
+  ggplot(.,
+         aes(x = CuratedTrmGenes, y = CuratedExhGenes)) +
+  geom_point(alpha = 0.8, size = 1, color = "gray50") +
+  geom_hline(yintercept = lowExhPct,
+             col = "gray10",
+             lty = 5,
+             size = 1) +
+  geom_hline(yintercept = highExhPct,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = lowTrmPct ,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = highTrmPct,
+             col = "gray10",
+              lty = 5,
+             size = 1) +
+  xlab("Initial residency score") +
+  ylab("Initial exhaustion score") +
+  currentTheme +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+cell_attrsCD8 %>%
+  # filter(Tissue == "T") %>%
+  ggplot(.,
+         aes(x = CuratedTrmGenes, y = CuratedExhGenes)) +
+  geom_point(alpha = 0.8, size = 1, color = "gray50") +
+  xlab("Initial residency score") +
+  ylab("Initial exhaustion score") +
+  currentTheme +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+dev.off()
+
+pdf(
+  paste0(figPath, "ScatterPlot_ZhangSmart_CD8_CuratedTRM_TEX_AllCells_lines_20200928_EditLines.pdf"),
+  height = 5.3,
+  width = 4.8
+)
+
+# cell_attrsCD8_Tissue %>%
+cell_attrsCD8 %>%
+  # filter(Tissue == "T") %>%
+  ggplot(.,
+         aes(x = CuratedTrmGenes, y = CuratedExhGenes, color = Sub_Cluster)) +
+  geom_point(alpha = 0.8, size = 1) +
+  scale_color_manual(values = cd8Cols) +
+  geom_hline(yintercept = lowExhPct,
+             col = "gray10",
+             lty = 5,
+             size = 1) +
+  geom_hline(yintercept = highExhPct,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = lowTrmPct ,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = highTrmPct,
+             col = "gray10",
+              lty = 5,
+             size = 1) +
+  xlab("Initial residency score") +
+  ylab("Initial exhaustion score") +
+  currentTheme +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+
+# cell_attrsCD8_Tissue %>%
+cell_attrsCD8 %>%
+  # filter(Tissue == "T") %>%
+  ggplot(.,
+         aes(x = CuratedTrmGenes, y = CuratedExhGenes, color = Tissue)) +
+  geom_point(alpha = 0.8, size = 1) +
+  scale_color_manual(values = cols) +
+  geom_hline(yintercept = lowExhPct,
+             col = "gray10",
+             lty = 5,
+             size = 1) +
+  geom_hline(yintercept = highExhPct,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = lowTrmPct ,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = highTrmPct,
+             col = "gray10",
+              lty = 5,
+             size = 1) +
+  xlab("Initial residency score") +
+  ylab("Initial exhaustion score") +
+  currentTheme +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+ 
+ 
+# cell_attrsCD8_Tissue %>%
+cell_attrsCD8 %>%
+  # filter(Tissue == "T") %>%
+  ggplot(.,
+         aes(x = CuratedTrmGenes, y = CuratedExhGenes, color = MSI)) +
+  geom_point(alpha = 0.8, size = 1) +
+  scale_color_manual(values = cols) +
+  geom_hline(yintercept = lowExhPct,
+             col = "gray10",
+             lty = 5,
+             size = 1) +
+  geom_hline(yintercept = highExhPct,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = lowTrmPct ,
+             col = "gray10",
+             size = 1) +
+  geom_vline(xintercept = highTrmPct,
+             col = "gray10",
+              lty = 5,
+             size = 1) +
+  xlab("Initial residency score") +
+  ylab("Initial exhaustion score") +
+  currentTheme +
+  guides(color = guide_legend(nrow = 3,
+                              override.aes = list(size = 3)))
+ 
+dev.off()
+```
+
+
+## Markers for CD8
+```{r}
+##----------- In both Tum and normal
+cell_attrsCD8_Tissue$TissueExhCells[cell_attrsCD8_Tissue$CuratedExhGenes >
+                                      highExhPct &
+                                      cell_attrsCD8_Tissue$CuratedTrmGenes <
+                                      lowTrmPct] <-
+  "CD8_Exh"
+# cell_attrsCD8_Tissue$TissueExhCells[
+#     cell_attrsCD8_Tissue$CuratedExhGenes > 0.6] <-
+#   "CD8_Exh"
+
+
+cell_attrsCD8_Tissue$TissueExhCells[cell_attrsCD8_Tissue$CuratedTrmGenes >
+                                      highTrmPct &
+                                      cell_attrsCD8_Tissue$CuratedExhGenes < lowExhPct] <-
+  "CD8_Trm"
+# cell_attrsCD8_Tissue$TissueExhCells[
+#   cell_attrsCD8_Tissue$CuratedTrmGenes > 0.7 &
+#     cell_attrsCD8_Tissue$CuratedExhGenes < 0.4] <-
+#   "CD8_Trm"
+
+cell_attrsCD8_Tissue$TissueExhCells[is.na(cell_attrsCD8_Tissue$TissueExhCells)] <- "Other"
+
+table(cell_attrsCD8_Tissue$TissueExhCells)
+## save cell names for these groups:
+
+CD8_Exh_Cells <- as.character(
+  cell_attrsCD8_Tissue$CellName[
+    cell_attrsCD8_Tissue$TissueExhCells == "CD8_Exh"])
+
+
+CD8_Trm_Cells <- as.character(
+  cell_attrsCD8_Tissue$CellName[
+    cell_attrsCD8_Tissue$TissueExhCells == "CD8_Trm"])
+```
+
+Subset the Seurat object to also remove peripheral blood cells.
+```{r}
+CD8Tissue <- cd8[,!cd8$Tissue == "P" &
+                   !cd8$Sub_Cluster %in% c("CD8-GPR183",
+                                       "CD8-LEF1")]
+
+all(cell_attrsCD8_Tissue$CellName == colnames(CD8Tissue))
+
+CD8Tissue@meta.data <- cell_attrsCD8_Tissue
+
+CD8Tissue <- SetIdent(CD8Tissue, value = "TissueExhCells")
+```
+
+### CD8 Exh markers
+```{r}
+##------- Find markers for CD8-Exh vs CD8-TRM-nonEx
+markers_CD8Exh <-
+  FindMarkers(
+    CD8Tissue,
+    ident.1 = "CD8_Exh",
+    ident.2 = "CD8_Trm",
+    only.pos = TRUE,
+    min.pct = 0.3,
+    logfc.threshold = 0.3
+  )
+
+markers_CD8Exh$gene <- rownames(markers_CD8Exh)
+markers_CD8Exh$Marker <- "CD8_Exh"
+
+## 322 genes
+DEGs_CD8Exh <- markers_CD8Exh[markers_CD8Exh$avg_logFC > 0.3 & markers_CD8Exh$p_val_adj < 0.05, ]
+
+dim(DEGs_CD8Exh)
+##----------- DE using MAST
+# BiocManager::install("MAST")
+# library(MAST)
+markers_CD8Exh_mast <-
+  FindMarkers(
+    CD8Tissue,
+    ident.1 = "CD8_Exh",
+    ident.2 = "CD8_Trm",
+    only.pos = TRUE,
+    min.pct = 0.3,
+    logfc.threshold = 0.3, 
+    test.use = "MAST"
+  )
+
+markers_CD8Exh_mast$gene <- rownames(markers_CD8Exh_mast)
+markers_CD8Exh_mast$Marker <- "CD8_Exh"
+
+## 302 genes
+DEGs_CD8Exh_mast <- markers_CD8Exh_mast[markers_CD8Exh_mast$avg_logFC > 0.3 & markers_CD8Exh_mast$p_val_adj < 0.05, ]
+
+dim(DEGs_CD8Exh_mast)
+
+## 287 common
+length(intersect(DEGs_CD8Exh_mast$gene, DEGs_CD8Exh$gene))
+
+## --- Only add genes that came up in MAST and do not exist in 
+## Wilcox test
+
+DEGs_CD8Exh_mast <- DEGs_CD8Exh_mast[! rownames(DEGs_CD8Exh_mast) %in% rownames(DEGs_CD8Exh), ]
+
+##--- 645 genes in total
+DEGs_CD8Exh <- rbind(DEGs_CD8Exh, DEGs_CD8Exh_mast)
+
+
+## Add GPCRs:
+DEGs_CD8Exh$IsGPCR <- FALSE
+DEGs_CD8Exh$IsGPCR[DEGs_CD8Exh$gene %in% gpr] <- TRUE
+## Add TFs:
+DEGs_CD8Exh$IsTF <- FALSE
+DEGs_CD8Exh$IsTF[DEGs_CD8Exh$gene %in% TFs$Gene] <- TRUE
+
+```
+
+
+#### Percentile filtration
+Filter those high in blood and also high in Trm.
+Only two genes (CXCL13 and HAVCR2): their 25%tile > others 90%tile
+```{r}
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+
+gg <-  DEGs_CD8Exh$gene
+exprData_Genes <- exprData[gg, ]
+cell_attrsCD8 <- cd8[[]]
+
+
+Exh_Pct <-
+  rowQuantiles(exprData_Genes[, CD8_Exh_Cells], probs = 0.65)
+
+Trm_Pct <-
+  rowQuantiles(exprData_Genes[, CD8_Trm_Cells], probs = 0.9)
+
+Blood_Pct <-
+  rowQuantiles(exprData_Genes[, cell_attrsCD8$Tissue == "P"], probs = 0.9)
+
+
+pctData_cd8Exh <- data.frame(cbind(Exh_Pct,
+                               Trm_Pct, 
+                               Blood_Pct
+                               ))
+
+pctData_cd8Exh$gene <- rownames(pctData_cd8Exh)
+
+pctData_cd8ExhPass <- pctData_cd8Exh %>% 
+  filter(Exh_Pct > Trm_Pct & Exh_Pct> Blood_Pct) %>% 
+  data.frame()
+
+pctData_cd8ExhPass <-
+  pctData_cd8ExhPass[order(pctData_cd8ExhPass$Exh_Pct, decreasing = T),]
+
+pctData_cd8ExhPass ## 27 genes
+```
+
+```{r}
+DEGs_CD8Exh$PctPass <- FALSE
+
+DEGs_CD8Exh$PctPass[DEGs_CD8Exh$gene %in% pctData_cd8ExhPass$gene] <- TRUE
+
+write.table(
+  DEGs_CD8Exh,
+  paste0(outPath, "Zhang_CD8Exh_Markers_BasedOnScores_20200928.txt"),
+  row.names = F,
+  sep = "\t"
+)
+```
+
+
+### CD8 Trm markers
+```{r}
+##------- Find markers for CD8-TRM vs CD8-Exh
+markers_CD8Trm <-
+  FindMarkers(
+    CD8Tissue,
+    ident.1 = "CD8_Trm",
+    ident.2 = "CD8_Exh",
+    only.pos = TRUE,
+    min.pct = 0.3,
+    logfc.threshold = 0.3
+  )
+
+markers_CD8Trm$gene <- rownames(markers_CD8Trm)
+markers_CD8Trm$Marker <- "CD8_Trm"
+
+## 207
+DEGs_CD8Trm <- markers_CD8Trm[markers_CD8Trm$avg_logFC > 0.3 & markers_CD8Trm$p_val_adj < 0.05, ]
+
+dim(DEGs_CD8Trm)
+##------- use MAST for DE
+markers_CD8Trm_mast <-
+  FindMarkers(
+    CD8Tissue,
+    ident.1 = "CD8_Trm",
+    ident.2 = "CD8_Exh",
+    only.pos = TRUE,
+    min.pct = 0.3,
+    logfc.threshold = 0.3,
+    test.use = "MAST"
+  )
+
+markers_CD8Trm_mast$gene <- rownames(markers_CD8Trm_mast)
+markers_CD8Trm_mast$Marker <- "CD8_Trm"
+
+## 192 genes
+
+DEGs_CD8Trm_mast <- markers_CD8Trm_mast[markers_CD8Trm_mast$avg_logFC > 0.3 & markers_CD8Trm_mast$p_val_adj < 0.05, ]
+
+dim(DEGs_CD8Trm_mast)
+## 184 common
+length(intersect(DEGs_CD8Trm_mast$gene, DEGs_CD8Trm$gene))
+
+##  23 genes came up in this method that did not come up in Wilcox!
+DEGs_CD8Trm_mast <- DEGs_CD8Trm_mast[! rownames(DEGs_CD8Trm_mast) %in% rownames(DEGs_CD8Trm), ]
+
+##--- 215 genes in total
+DEGs_CD8Trm <- rbind(DEGs_CD8Trm, DEGs_CD8Trm_mast)
+# dim(DEGs_CD8Trm)
+
+## Add GPCRs:
+DEGs_CD8Trm$IsGPCR <- FALSE
+DEGs_CD8Trm$IsGPCR[DEGs_CD8Trm$gene %in% gpr] <- TRUE
+## Add TFs:
+DEGs_CD8Trm$IsTF <- FALSE
+DEGs_CD8Trm$IsTF[DEGs_CD8Trm$gene %in% TFs$Gene] <- TRUE
+
+```
+
+
+#### Percentile filtration
+Filter those high in blood and also high in Tex.
+
+```{r}
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+
+gg <-  DEGs_CD8Trm$gene
+exprData_Genes <- exprData[gg, ]
+
+cell_attrsCD8 <- cd8[[]]
+
+
+Trm_Pct <-
+  rowQuantiles(exprData_Genes[, CD8_Trm_Cells ], probs = 0.65)
+
+Exh_Pct <-
+  rowQuantiles(exprData_Genes[,CD8_Exh_Cells ], probs = 0.9)
+
+Blood_Pct <-
+  rowQuantiles(exprData_Genes[, cell_attrsCD8$Tissue == "P"], probs = 0.90)
+
+
+pctData_cd8Trm <- data.frame(cbind(Trm_Pct,
+                               Exh_Pct, 
+                               Blood_Pct
+                               ))
+
+pctData_cd8Trm$gene <- rownames(pctData_cd8Trm)
+
+pctData_cd8TrmPass <- pctData_cd8Trm %>% 
+  filter(Trm_Pct > Exh_Pct & Trm_Pct > Blood_Pct) %>% 
+  data.frame()
+
+pctData_cd8TrmPass <-
+  pctData_cd8TrmPass[order(pctData_cd8TrmPass$Trm_Pct, decreasing = T),]
+
+pctData_cd8TrmPass  ## 43
+```
+
+
+
+```{r}
+DEGs_CD8Trm$PctPass <- FALSE
+
+DEGs_CD8Trm$PctPass[DEGs_CD8Trm$gene %in% pctData_cd8TrmPass$gene] <- TRUE
+
+write.table(
+  DEGs_CD8Trm,
+  paste0(outPath, "Zhang_CD8Trm_Markers_BasedOnScores_20200928.txt"),
+  row.names = F,
+  sep = "\t"
+)
+
+```
+
+### Cross cor between markers
+```{r}
+CD8Expr <- subSmartCD8[c(pctData_cd8TrmPass$gene,pctData_cd8ExhPass$gene), ]
+
+corMat <- cor(t(CD8Expr), method = "spearman")
+
+markerCols <- c("gray90", "gray20")
+names(markerCols) <- c("Trm", "Exh")
+
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(Marker = as.character(c(rep("Trm", length(pctData_cd8TrmPass$gene)), rep("Exh", length(pctData_cd8ExhPass$gene)))),
+                                    col = list(Marker = markerCols))
+
+
+pdf(paste0(figPath, "CrossCor_ZhangSmart_CD8_Markers_PctPass_20200928.pdf"), height = 12, width = 13)
+ComplexHeatmap::Heatmap(corMat,
+                        show_column_names = T, 
+                        top_annotation = sampleAnnHm, 
+                        col = circlize::colorRamp2(
+                          c(min(corMat), 0, max(corMat)), c("yellow3", "white", "navy")), 
+                        # col = viridis::plasma(100), 
+                        name = "Rho")
+dev.off()
+
+
+```
+
+
+
+```{r}
+# 
+DEGs_CD8Trm <-
+  read.table(
+    paste0(outPath, "Zhang_CD8Trm_Markers_BasedOnScores_20200928.txt"),
+    header = T,
+    sep = "\t",
+    stringsAsFactors = F
+  )
+
+pctData_cd8TrmPass <- DEGs_CD8Trm[DEGs_CD8Trm$PctPass, ]
+
+DEGs_CD8Exh <-
+  read.table(
+    paste0(outPath, "Zhang_CD8Exh_Markers_BasedOnScores_20200928.txt"),
+    header = T,
+    sep = "\t",
+    stringsAsFactors = F
+  )
+
+pctData_cd8ExhPass <- DEGs_CD8Exh[DEGs_CD8Exh$PctPass, ]
+
+```
+
+```{r}
+library(singscore)
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+rd <- rankGenes(exprData)
+
+CD8_Trm <- simpleScore(
+  rankData = rd,
+  upSet =  pctData_cd8TrmPass$gene,
+  knownDirection = T,
+  centerScore = F
+)
+
+CD8_Exh <- simpleScore(
+  rankData = rd,
+  upSet =  pctData_cd8ExhPass$gene,
+  knownDirection = T,
+  centerScore = F
+)
+
+cd8$CD8_Trm <- CD8_Trm$TotalScore
+cd8$CD8_Exh <- CD8_Exh$TotalScore
+
+
+## UMAP coloured by the two scores
+
+cell_attrsCD8 <- cd8[[]]
+currentRedData <- cd8@reductions[["umap"]]@cell.embeddings
+
+cell_attrsCD8$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsCD8$UMAP_2 <- currentRedData[, "UMAP_2"]
+
+
+pdf(paste0(figPath, "UMAP_ZhangSmart_Scores_CD8_20200928.pdf"),
+# pdf(paste0(figPath, "UMAP_ZhangSmart_ScoresExhTrm_CD8_20200928.pdf"),
+    height = 4, width = 4)
+
+for(i in c(scoreNames, "CD8_Trm", "CD8_Exh")){
+# for(i in c("CD8_Trm", "CD8_Exh")){
+  print(
+    cell_attrsCD8 %>% 
+      arrange(!!sym(i)) %>% 
+    ggplot(., 
+           aes_string(x = "UMAP_1", 
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.8, cex = 0.5) +
+  scale_color_viridis_c() +
+  theme_dark() +
+          theme(
+        legend.spacing = unit(1.5, "mm"),
+        legend.position = "top",
+        legend.key.width = unit(0.9, "cm"), 
+        legend.title = element_text(size = 8, face = "italic"),
+        legend.text = element_text(size = 8)
+      )
+  )
+}
+dev.off()
+```
+
+### Save data after final scores
+```{r}
+# saveRDS(cd8, paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_20200928_UMAP_scores2.RDS"))
+
+# cd8 <- readRDS(paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_20200928_UMAP_scores2.RDS"))
+```
+
+
+## UMAP coloured by markers
+```{r}
+cell_attrsCD8 <- cd8[[]]
+currentRedData <- cd8@reductions[["umap"]]@cell.embeddings
+
+cell_attrsCD8$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsCD8$UMAP_2 <- currentRedData[, "UMAP_2"]
+
+```
+
+```{r}
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+
+# gg <- exhData$Genes
+# gg <- trmData$Genes
+
+
+gg <- pctData_cd8ExhPass$gene
+# gg <- pctData_cd8TrmPass$gene
+
+exprData_Genes <-
+  exprData[gg,]
+
+exprData_Genes <-
+  data.frame(cell_attrsCD8, data.frame(t(exprData_Genes)))
+
+
+exprLong <- exprData_Genes %>% 
+  pivot_longer(
+    values_to = "Expression",
+    names_to = "Genes" ,
+    cols = 101:ncol(exprData_Genes)
+  ) %>% 
+  data.frame(check.names = F)
+
+
+
+pdf(
+  paste0(figPath, "UMAP_ZhangSmart_Exh_CD8_Markers_20200928.pdf"),
+  # height = 12,
+  # width = 15
+  height = 6,
+  width = 15
+)
+exprLong %>% 
+  group_by(Genes) %>% 
+  arrange(Expression) %>% 
+ggplot(., aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+  geom_point(alpha = 0.8, cex = 0.5) +
+  facet_wrap(~ Genes, ncol = 10) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top")
+
+visReduction_feature (object = cd8,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "RNA",
+    objSlot = "data",
+    # dataType = "data",
+    nrow = 3,
+    ncol = 10,
+    features = gg,
+    textSize = 8,
+    pointSize = 0.4,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+
+dev.off()
+
+```
+
+
+
+## UMAP coloured by scores
+```{r}
+
+# # scoreNames <- unique(c("Trm", "Exh", "NK_Exh", "NK_Trm", scoreNames))
+# scoreNames <- unique(c("Trm", "CD8_Trm", "Exh", "CD8_Exh", scoreNames))
+# # scoreNames <- scoreNames[order(scoreNames)]
+# 
+# pdf(paste0(figPath, "UMAP_ZhangSmart_Scores_CD8_20200909.pdf"),
+#     height = 4, width = 4)
+# 
+# for(i in scoreNames){
+#   print(
+#     ggplot(cell_attrsCD8, 
+#            aes_string(x = "UMAP_1", 
+#                    y = "UMAP_2",
+#                    color = i)) +
+#   geom_point(alpha = 0.8, cex = 0.5) +
+#   scale_color_viridis_c() +
+#   theme_dark() +
+#           theme(
+#         legend.spacing = unit(1.5, "mm"),
+#         legend.position = "top",
+#         legend.key.width = unit(0.9, "cm"), 
+#         legend.title = element_text(size = 8, face = "italic"),
+#         legend.text = element_text(size = 8)
+#       )
+#   )
+# }
+# dev.off()
+
+```
+
+## PCA/UMAP on marker genes
+```{r}
+gg <-  c(pctData_cd8ExhPass$gene, pctData_cd8TrmPass$gene)
+# gg <-  unique(c(CD8_ExhMarker, CD8_TrmMarker, DEGs_CD8Prolif$gene))
+# gg <-  c(trmData$Gene, exhData$Gene)
+
+cd8TrmExhSig <-
+  RunPCA(cd8, features = rownames(cd8)[rownames(cd8) %in% gg], verbose = F)
+
+ElbowPlot(cd8TrmExhSig)
+```
+
+
+Clustering and UMAP on marker genes
+
+```{r}
+## including both signatures
+cd8TrmExhSig <- FindNeighbors(cd8TrmExhSig, reduction = "pca", dims = 1:10)
+cd8TrmExhSig <- FindClusters(cd8TrmExhSig, resolution = 0.5)
+
+cd8TrmExhSig <- RunUMAP(cd8TrmExhSig, reduction = "pca", 
+          dims = 1:10,  min.dist = 0.3, n.neighbors = 30)
+
+DimPlot(cd8TrmExhSig, reduction = "umap")
+DimPlot(cd8TrmExhSig, reduction = "umap", group.by = "Sub_Cluster")
+DimPlot(cd8TrmExhSig, reduction = "umap", group.by = "Tissue")
+FeaturePlot(cd8TrmExhSig, reduction = "umap", features = "CD8_Exh")
+FeaturePlot(cd8TrmExhSig, reduction = "umap", features = "CD8_Trm")
+```
+
+
+```{r}
+anns <- c("seurat_clusters", "Tissue", "MSI")
+
+pdf(
+  paste0(figPath, "UMAP_ZhangSmart_TrmExh_Markers_CD8_CellAnnot.pdf"),
+  height = 5,
+  width = 4.5
+)
+
+for(a in anns){
+  print(DimPlot(cd8TrmExhSig, 
+                reduction = "umap", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3))))
+}
+
+DimPlot(cd8TrmExhSig, 
+                reduction = "umap", 
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+# FeaturePlot(cd8TrmExhSig,
+#             "Exh",
+#             pt.size = 0.9,
+#             order = T) +
+#   scale_color_viridis_c() + 
+#   theme_dark() +
+#   theme(legend.position = "top")
+
+
+FeaturePlot(cd8TrmExhSig,
+            "CD8_Exh",
+            pt.size = 0.9,
+            order = T) +
+  scale_color_viridis_c() + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+# FeaturePlot(cd8TrmExhSig,
+#             "Trm",
+#             pt.size = 0.9,
+#             order = T) +
+#   scale_color_viridis_c() + 
+#   theme_dark() +
+#   theme(legend.position = "top")
+
+
+FeaturePlot(cd8TrmExhSig,
+            "CD8_Trm",
+            pt.size = 0.9,
+            order = T) +
+  scale_color_viridis_c() + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+
+dev.off()
+```
+
+### Extract Loadings for projectR
+```{r}
+
+cd8TrmExhSigPCALoading <- cd8TrmExhSig@reductions[["pca"]]@feature.loadings
+
+saveRDS(cd8TrmExhSigPCALoading, 
+        paste0(outPath, "ZhangMarkerPCALoadings_TrmExh_Markers_CD8_20200928.RDS"))
+```
+
+### Visualise PCs based on markers
+
+```{r}
+pdf(
+  paste0(figPath, "PCA_ZhangSmart_TrmExh_Markers_CD8_20200928.pdf"),
+  height = 5,
+  width = 5
+)
+
+for(a in anns){
+  print(DimPlot(cd8TrmExhSig, 
+                reduction = "pca", 
+        group.by = a) +
+  theme_minimal() +
+  scale_color_manual(values = cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3))))
+}
+
+DimPlot(cd8TrmExhSig, 
+                reduction = "pca", 
+        group.by = "Sub_Cluster") +
+  theme_minimal() +
+  scale_color_manual(values = cd8Cols) +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+
+# FeaturePlot(cd8TrmExhSig,
+#             "Exh",
+#             reduction = "pca",
+#             pt.size = 0.9,
+#             order = T) +
+#   scale_color_viridis_c(100) + 
+#   theme_dark() +
+#   theme(legend.position = "top")
+
+
+FeaturePlot(cd8TrmExhSig,
+            "CD8_Exh",
+            reduction = "pca",
+            pt.size = 0.9,
+            order = T) +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+# FeaturePlot(cd8TrmExhSig,
+#             "Trm",
+#             reduction = "pca",
+#             pt.size = 0.9,
+#             order = T) +
+#   scale_color_viridis_c(100) + 
+#   theme_dark() +
+#   theme(legend.position = "top")
+
+
+FeaturePlot(cd8TrmExhSig,
+            "CD8_Trm",
+            reduction = "pca",
+            pt.size = 0.9,
+            order = T) +
+  scale_color_viridis_c(100) + 
+  theme_dark() +
+  theme(legend.position = "top")
+
+
+dev.off()
+```
+# Check expression of genes
+```{r}
+
+# cd8 <- readRDS(paste0(outPath, "Zhang_SmartSeq_SeuratObj_CD8_20200928_UMAP_scores2.RDS")
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+ann <- cd8[[]]
+colnames(ann) <- gsub("CD8_Trm", "CD8_Res", colnames(ann) )
+
+tissueCols <- cols[1:3]
+names(tissueCols) <- c("N", "P", "T")
+
+
+exhColour <- colorRampPalette(brewer.pal(9, 'Blues')[-c(1)])(8)
+trmColour <- colorRampPalette(brewer.pal(9, 'Oranges')[-c(1)])(8)
+
+sampleAnnHm <-
+  ComplexHeatmap::HeatmapAnnotation(
+    df = ann[, c("Sub_Cluster", "Tissue", "CD8_Exh", "CD8_Res")],
+    col = list(Sub_Cluster = cd8Cols,
+               Tissue = tissueCols, 
+               CD8_Exh = circlize::colorRamp2(seq(min(ann$CD8_Exh),
+    max(ann$CD8_Exh), l = 8), exhColour), 
+               CD8_Res = circlize::colorRamp2(seq(min(ann$CD8_Res),
+    max(ann$CD8_Res), l = 8), trmColour)
+    
+    ))
+
+gs <-
+  c(
+    # "IFNG",
+    "GZMK",
+    "CCR7",
+    "SELL",
+    "GPR183",
+    # "GPR15",
+    "PDCD1",
+    "CTLA4",
+    "HAVCR2",
+    "TIGIT")
+
+pdf(
+  paste0(figPath, "Heatmap_ZhangSmart_CD8_selectedFewGenes2_rmIFNG_AllCells_scores.pdf"),
+  height = 3.2,
+  width = 8
+)
+
+ComplexHeatmap::Heatmap(exprData[ gs, ],
+                        show_column_names = F, 
+                        top_annotation = sampleAnnHm, 
+                        col = viridis::cividis(100), 
+                        name = "logExpr", column_title = "CD8 cells")
+
+dev.off()
+```
+
+
+# TUM DATA
+
+## CCLE
+
+```{r}
+# selectedGenes <- c(trmData$Gene, exhData$Gene)
+selectedGenes <- c(pctData_cd8TrmPass$gene, pctData_cd8ExhPass$gene)
+
+cclePath <- "/Users/mfor0011/Documents/data/CCLE/"
+
+dge <- readRDS(paste0(cclePath, "DGEList_CCLE_panCancer.RDS"))
+
+library(edgeR)
+  
+kp <- rowSums(cpm(dge) > 1) >= 5 |
+  dge$genes$Symbol %in% selectedGenes
+summary(kp)
+
+dgeFilt <- dge[kp, ]
+
+dgeFiltNorm <- calcNormFactors(dgeFilt)
+
+# logCPM <- cpm(dgeFiltNorm, log = T)
+logRPKM <- rpkm(dgeFiltNorm, log = T, gene.length = dgeFiltNorm$genes$gene_length)
+
+```
+
+
+### Boxplots of genes in CCLE
+
+
+"KIR2DL4" "CCL3" do not exist in CCLE data
+The updated one in 28th of Sep did not have any gene missing
+```{r}
+# figPath <- "../figure/"
+
+gg <- selectedGenes[selectedGenes %in% dgeFiltNorm$genes$Symbol]
+
+logRPKM_CRC <- logRPKM[, dgeFiltNorm$samples$type_refined == "colorectal"]
+
+brbg <- rev(RColorBrewer::brewer.pal(11, "PRGn"))
+brbg_hcl <- colorspace::diverging_hcl(11,
+  h = c(180, 50), c = 80, l = c(20, 95), power = c(0.7, 1.3))
+
+# library(scico)
+pdf(paste0(figPath, "Heatmap_CCLE_CRC_TrmExh_Markers_CD8_20200928.pdf"), height = 13, width = 10)
+ComplexHeatmap::Heatmap(logRPKM_CRC[gg, ! is.na(colnames(logRPKM_CRC))], 
+                        col = brbg_hcl, 
+                        show_column_names = F, name = "logRPKM")
+dev.off()
+
+pdf(paste0(figPath, "Boxplot_CCLE_TrmExh_Markers_CD8_20200928.pdf"), height = 4, width = 8)
+for(g in gg) {
+  gex <- data.frame(t(logRPKM[g, , drop = F]), dge$samples, check.names = F, check.rows = F)
+  
+  p <- ggplot(gex, aes_string(x = "type_refined", y = gex[,g])) +
+    geom_boxplot() +
+    theme_bw() +
+    ggtitle(g) +
+    ylab("logRPKM") +
+    geom_hline(yintercept = 0, lty = 2, col = "gray80") +
+    theme(axis.text.x = element_text(hjust = 1, angle = 60))
+  print(p)
+}
+dev.off()
+
+```
+
+Only keep genes that are not high in CCLE:
+
+```{r}
+ggLogRPKM <- logRPKM_CRC[gg, ! is.na(colnames(logRPKM_CRC))]
+markersPassCCLE <- rownames(ggLogRPKM)[rowMedians(ggLogRPKM) <= 0]
+markersPassCCLE
+
+# markersPassCCLE[markersPassCCLE %in% trmData$Genes]
+# [1] "GPR15"   "NR4A3"   "STAT4"   "PTGER4"  "RBKS"    "IL12RB2"
+# [7] "TMIGD2"  "ZNF331" 
+
+markersPassCCLE[markersPassCCLE %in% pctData_cd8TrmPass$gene]
+#  [1] "GPR15"   "NR4A3"   "PTGER4"  "STAT4"   "CD69"    "RBKS"   
+#  [7] "TMIGD2"  "ZNF331"  "GPR65"   "GFPT2"   "XCL1"    "IL12RB2"
+# [13] "LDLRAD4"
+
+# markersPassCCLE[markersPassCCLE %in% exhData$Genes]
+#  [1] "CXCL13"   "HAVCR2"   "MYO7A"    "VCAM1"    "TNFSF4"  
+#  [6] "PDCD1"    "TNFRSF18" "KRT86"    "ETV1"     "SARDH"   
+# [11] "CTLA4"    "MIR155HG" "LAYN"     "ACP5"     "GZMB"    
+# [16] "HLA-DRA" 
+
+
+markersPassCCLE[markersPassCCLE %in% pctData_cd8ExhPass$gene]
+#  [1] "CXCL13"   "HAVCR2"   "VCAM1"    "MYO7A"    "PDCD1"   
+#  [6] "CTLA4"    "TNFSF4"   "ZNF683"   "SARDH"    "SEMA4A"  
+# [11] "ACP5"     "KRT86"    "APOBEC3H" "TTC24"    "CSF1"  
+```
+
+## LCM
+
+```{r}
+ll <- readRDS(paste0(dataPath, "ColoRectal_GeneExpression_LCM_MicroArray_GSE21510_AvergedProbes_Filtered.rds"))
+
+## 67/70 genes --> missing:  "KRT86"    "APOBEC3H" "TTC24" 
+gg <- selectedGenes[selectedGenes %in% rowData(ll)$Gene.Symbol]
+
+l <- ll[rowData(l)$Gene.Symbol %in% gg , ll$`tissue:ch1` == "cancer, LCM" ]
+
+lAnnot <- colData(l)
+lAnnot$Stage[grepl("1", lAnnot$`stage:ch1`)] <- "I"
+lAnnot$Stage[grepl("2", lAnnot$`stage:ch1`)] <- "II"
+lAnnot$Stage[grepl("3", lAnnot$`stage:ch1`)] <- "III"
+lAnnot$Stage[grepl("4", lAnnot$`stage:ch1`)] <- "IV"
+
+lExpr <- assay(l)
+row.names(lExpr) <- rowData(l)$Gene.Symbol
+
+brbg <- rev(RColorBrewer::brewer.pal(11, "PRGn"))
+brbg_hcl <- colorspace::diverging_hcl(11,
+  h = c(180, 50), c = 80, l = c(20, 95), power = c(0.7, 1.3))
+
+# library(scico)
+pdf(paste0(figPath, "Heatmap_GEO_LCM_CRC_TrmExh_Markers_CD8_20200928.pdf"), height = 13, width = 10)
+ComplexHeatmap::Heatmap(lExpr, 
+                        col = brbg_hcl, 
+                        show_column_names = F, name = "logExpr")
+dev.off()
+
+
+gex <- data.frame(t(lExpr), lAnnot, check.names = F, check.rows = F)
+  
+gexLong <- gex %>%
+  pivot_longer(.,
+               cols = 1:67,
+               values_to = "logExpr",
+               names_to = "Genes") %>%
+  data.frame()
+
+pdf(paste0(figPath, "Boxplot_GEO_LCM_TrmExh_Markers_Stage_CD8_20200928.pdf"), height = 10, width = 12)
+
+   ggplot(gexLong, aes_string(x = "Stage", y = "logExpr")) +
+    geom_boxplot() +
+    facet_wrap(~ Genes, scales = "free")
+    theme_bw() +
+    ylab("logExpr") 
+    # geom_hline(yintercept = 0, lty = 2, col = "gray80") +
+    # theme(axis.text.x = element_text(hjust = 1, angle = 60))
+
+dev.off()
+
+```
+
+```{r}
+th <- quantile(rowMedians(assay(ll)), probs = 0.5)
+markersPassLCM <- rownames(lExpr)[rowMedians(lExpr) <= th]
+markersPassLCM
+# [1] "HAVCR2"   "PDE4A"    "GFPT2"    "CXCL13"   "XCL1"    
+#  [6] "IL12RB2"  "CSF1"     "TNFSF4"   "SARDH"    "NR4A3"   
+# [11] "MYO7A"    "GPR15"    "APOBEC3C" "GPR65"    "CTLA4"   
+# [16] "AFAP1L2"
+
+intersect(markersPassLCM, markersPassCCLE)
+#  [1] "HAVCR2"  "GFPT2"   "CXCL13"  "XCL1"    "IL12RB2" "CSF1"   
+#  [7] "TNFSF4"  "SARDH"   "NR4A3"   "MYO7A"   "GPR15"   "GPR65"  
+# [13] "CTLA4" 
+
+
+markersPassLCM[! markersPassLCM %in% markersPassCCLE]
+# "PDE4A"    "APOBEC3C" "AFAP1L2" 
+```
+
+
+Focus on genes obtained from corrected TCGA data (cor < -0.35)
+Union and common genes
+```{r}
+
+passGenes <- unique(c(markersPassLCM, markersPassCCLE))
+#  [1] "HAVCR2"   "PDE4A"    "GFPT2"    "CXCL13"  
+#  [5] "XCL1"     "IL12RB2"  "CSF1"     "TNFSF4"  
+#  [9] "SARDH"    "NR4A3"    "MYO7A"    "GPR15"   
+# [13] "APOBEC3C" "GPR65"    "CTLA4"    "AFAP1L2" 
+# [17] "PTGER4"   "STAT4"    "CD69"     "RBKS"    
+# [21] "TMIGD2"   "ZNF331"   "LDLRAD4"  "VCAM1"   
+# [25] "PDCD1"    "ZNF683"   "SEMA4A"   "ACP5"    
+# [29] "KRT86"    "APOBEC3H" "TTC24"       
+
+
+TrmPass <- passGenes[ passGenes %in% pctData_cd8TrmPass$gene]
+#  [1] "PDE4A"   "GFPT2"   "XCL1"    "IL12RB2" "NR4A3"  
+#  [6] "GPR15"   "GPR65"   "PTGER4"  "STAT4"   "CD69"   
+# [11] "RBKS"    "TMIGD2"  "ZNF331"  "LDLRAD4"
+  
+ 
+ExhPass <- passGenes[ passGenes %in% pctData_cd8ExhPass$gene]
+#  [1] "HAVCR2"   "CXCL13"   "CSF1"     "TNFSF4"  
+#  [5] "SARDH"    "MYO7A"    "APOBEC3C" "CTLA4"   
+#  [9] "AFAP1L2"  "VCAM1"    "PDCD1"    "ZNF683"  
+# [13] "SEMA4A"   "ACP5"     "KRT86"    "APOBEC3H"
+# [17] "TTC24"  
+
+trmData <- pctData_cd8TrmPass
+
+trmData$CLsPass <- FALSE
+trmData$CLsPass[trmData$gene %in% markersPassCCLE] <- TRUE
+
+trmData$LcmPass <- FALSE
+trmData$LcmPass[trmData$gene %in% markersPassLCM] <- TRUE
+
+trmData$CancerPass <- FALSE
+trmData$CancerPass[trmData$gene %in% TrmPass] <- TRUE
+
+
+
+exhData <- pctData_cd8ExhPass
+
+exhData$CLsPass <- FALSE
+exhData$CLsPass[exhData$gene %in% markersPassCCLE] <- TRUE
+
+exhData$LcmPass <- FALSE
+exhData$LcmPass[exhData$gene %in% markersPassLCM] <- TRUE
+
+exhData$CancerPass <- FALSE
+exhData$CancerPass[exhData$gene %in% ExhPass] <- TRUE
+
+```
+
+
+### Save merged markers
+```{r}
+exhData$Marker <- "Exh"
+trmData$Marker <- "Trm"
+
+TrmExhDataList <- list(exhData = exhData, 
+                       trmData = trmData)
+
+saveRDS(TrmExhDataList, paste0(outPath, "TrmExhMarkers_CD8_CLs_LCM.RDS"))
+# saveRDS(TrmExhDataList, paste0(outPath, "Merged_TrmExhMarkers_CD8.RDS"))
+
+
+TrmExhData <- rbind(trmData, exhData)
+
+write.table(
+  TrmExhData,
+  paste0(outPath, "TrmExhMarkers_CD8_CLs_LCM.txt"),
+  row.names = F,
+  sep = "\t"
+)
+```
+
+I did not use TCGA for filtration in the end.
+
+# Trajectory
+Here not only we use the PCA and UMAPs from Seurat, but also, we calculate PCA again; this time, when performing PCA, we do not scale the genes by their variance because we do not believe that all genes are equally informative. We want to find signal in the robustly expressed, highly variable genes, not dampen this signal by forcing equal variance across genes. When plotting, we make sure to set the aspect ratio, so as not to distort the perceived distances.
+
+```{r}
+## add clusters from markers:
+cd8$seurat_clusters_markers <- cd8TrmExhSig$seurat_clusters
+
+cell_attrsCD8 <- cd8[[]]
+exprData <- as.matrix(GetAssayData(cd8, slot = "data"))
+
+rd_umap_seurat <- cd8@reductions[["umap"]]@cell.embeddings
+rd_pca_seurat <- cd8@reductions[["pca"]]@cell.embeddings
+```
+
+```{r}
+## PCA
+pca <- prcomp(t(exprData), scale. = FALSE)
+rd_pca <- pca$x[,1:2]
+
+plot(rd_pca, col = rgb(0,0,0,.5), pch=16, asp = 1)
+
+## UMAP
+library(uwot)
+rd_umap <- umap(t(exprData))
+colnames(rd_umap) <- c('UMAP1', 'UMAP2')
+
+## Here we also do a diffusion map using destiny package. This takes a while as we have ~ 15,000 genes
+
+library(destiny, quietly = TRUE)
+dm <- DiffusionMap(t(exprData))
+
+rd_diffmap <- cbind(DC1 = dm$DC1, DC2 = dm$DC2)
+
+
+plot(rd_umap, col = rgb(0,0,0,.5), pch=16, asp = 1)
+plot(rd_diffmap, col = rgb(0,0,0,.5), pch=16, asp = 1)
+```
+
+#### Generate SCE
+```{r}
+
+cd8.sce <- as.SingleCellExperiment(cd8)
+
+reducedDims(cd8.sce) <-
+  SimpleList(
+    # PCA = rd_pca,
+    # UMAP = rd_umap,
+    # DiffMap = rd_diffmap,
+    
+    ## from Seurat
+    PCA_Seurat = rd_pca_seurat,
+    UMAP_Seurat = rd_umap_seurat,
+    
+    ## scores
+    CuratedScores = as.matrix(cell_attrsCD8[, c("CuratedTrmGenes", "CuratedExhGenes")]),
+    MarkerScores = as.matrix(cell_attrsCD8[, c("CD8_Trm", "CD8_Exh")]),
+    # FinalScores = as.matrix(cell_attrsCD8[, c("Trm", "Exh")]),
+    
+    ## PCs from markers
+    UMAP_markers = cd8TrmExhSig@reductions[["umap"]]@cell.embeddings,
+    PCA_markers = cd8TrmExhSig@reductions[["pca"]]@cell.embeddings
+  )
+
+
+# names(reducedDims(cd8.sce))[8] <- "UMAP_markers"
+```
+
+### Clustering using mclust and kmeans
+For our analysis, we implement two clustering methods which similarly assume that Euclidean distance in a low-dimensional space reflect biological differences between cells: Gaussian mixture modeling and k-means. The former is implemented in the mclust package (Scrucca et al. 2016) and features an automated method for determining the number of clusters based on the Bayesian information criterion (BIC).
+
+```{r}
+##----- mclust
+# library(mclust, quietly = TRUE)
+# colData(cd8.sce)$GMM <- Mclust(rd_pca)$classification
+# 
+# plot(rd_pca,
+#      col = brewer.pal(9, "Set1")[colData(cd8.sce)$GMM],
+#      pch = 16,
+#      asp = 1)
+# 
+# ##---- kmeans
+# 
+# colData(cd8.sce)$kmeans <- kmeans(rd_pca, centers = 4)$cluster
+# 
+# plot(rd_pca, col = brewer.pal(9,"Set1")[colData(cd8.sce)$kmeans], pch=16, asp = 1)
+```
+
+```{r}
+saveRDS(cd8.sce, paste0(outPath, "Zhang_SmartSeq_CD8_SingleCellExperiment_20201016.RDS"))
+# 
+# cd8.sce <- readRDS(paste0(outPath, "Zhang_SmartSeq_CD8_SingleCellExperiment_20201016.RDS"))
+```
+
+
+### Slingshot
+We have 3 reductions on non-scaled data, 2 from seurat, 2 from scores, and 2 from markers. There are also 4 clusters. So change cluster labels as well as reducedDim argument everytime accordingly.
+
+#### Slingshot on new dims
+```{r}
+library(slingshot, quietly = FALSE)
+
+cd8.sce <- slingshot(cd8.sce, clusterLabels = 'kmeans', reducedDim = 'DiffMap')
+summary(cd8.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(cd8.sce$slingPseudotime_1, breaks=100)]
+
+exhCol <- viridis::viridis(100)[cut(cd8.sce$Exh, breaks=100)]
+trmCol <- viridis::viridis(100)[cut(cd8.sce$Trm, breaks=100)]
+
+pdf(paste0(figPath, "Trajectory_SlingShot_ZhangSmart_CD8_NonSclaedDiffMap_ClusterKmeans.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(cd8.sce)$DiffMap,
+  col = cd8Cols[as.factor(cd8.sce$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("topright", legend = unique(as.factor(cd8.sce$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$DiffMap,
+  col = exhCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$DiffMap,
+  col = trmCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$DiffMap,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+#### Slingshot on Seurat
+```{r}
+library(slingshot)
+cd8.sce <- slingshot(cd8.sce, clusterLabels = 'seurat_clusters', reducedDim = 'UMAP_Seurat')
+
+summary(cd8.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(cd8.sce$slingPseudotime_1, breaks=100)]
+
+
+exhCol <- viridis::viridis(100)[cut(cd8.sce$CD8_Exh, breaks=100)]
+trmCol <- viridis::viridis(100)[cut(cd8.sce$CD8_Trm, breaks=100)]
+
+
+pdf(paste0(figPath, "Trajectory_SlingShot_ZhangSmart_CD8_SeuratUMAP_ClusterSeurat.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(cd8.sce)$UMAP_Seurat,
+  col = cd8Cols[as.factor(cd8.sce$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(cd8.sce$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$UMAP_Seurat,
+  col = exhCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$UMAP_Seurat,
+  col = trmCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$UMAP_Seurat,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+#### Slingshot based on markers
+```{r}
+cd8.sce <- slingshot(cd8.sce, clusterLabels = 'seurat_clusters_markers', reducedDim = 'UMAP_markers')
+summary(cd8.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(cd8.sce$slingPseudotime_1, breaks=100)]
+
+# exhCol <- viridis::viridis(100)[cut(cd8.sce$NK_Exh, breaks=100)]
+# trmCol <- viridis::viridis(100)[cut(cd8.sce$NK_Trm, breaks=100)]
+
+pdf(paste0(figPath, "Trajectory_SlingShot_ZhangSmart_CD8_MarkersUMAP_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(cd8.sce)$UMAP_markers,
+  col = cd8Cols[as.factor(cd8.sce$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(cd8.sce$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+
+plot(
+  reducedDims(cd8.sce)$UMAP_markers,
+  col = exhCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$UMAP_markers,
+  col = trmCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$UMAP_markers,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+### For paper:
+```{r}
+source(paste0(scriptPath, "slingshot_ggplot.R"))
+cd8.sce <- slingshot(cd8.sce, clusterLabels = 'seurat_clusters_markers', reducedDim = 'UMAP_markers')
+
+sds <- SlingshotDataSet(cd8.sce)
+
+## get UMAP_1 and UMAP_2 for the curve
+# dd <- slingCurves(sds)[[1]]$s[slingCurves(sds)[[1]]$ord, ]
+
+
+textSize <- 1.4
+
+currentThemeTrj <- theme_dark() +
+  theme(
+    # panel.background = element_blank()
+    axis.title = element_text(size = rel(textSize)),
+    axis.text = element_text(angle = 0, size = rel(textSize)),
+    # strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black", size = 0.5),
+    legend.position = 'top',
+    legend.title = element_text(size = rel(textSize), face = "italic"),
+    legend.text = element_text(size = rel(textSize)),
+     legend.key.width = unit(2.4, 'lines'),
+    ## increase the line space
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+pdf(paste0(figPath, "Trajectory_ggplot_ZhangSmart_CD8_MarkersUMAP_ClusterMarkers_ExhScore.pdf"), height = 5, width = 8)
+ggplot() +
+  geom_point(size = 1) +
+  # gg_plot(sds, col = cd8.sce$CD8_Trm) +
+  gg_plot(sds, col = cd8.sce$CD8_Exh) +
+  xlab("UMAP 1") +
+  ylab("UMAP 2") +
+  scale_color_viridis_c(
+    option = "viridis", 
+    # name = "CD8 \nresidency\nscore")  +
+    name = "CD8 \nexhaustion\nscore")  +
+  currentThemeTrj 
+
+# ggplot() +
+#   geom_point(size = 1) +
+#   # gg_plot(sds, col = cd8.sce$CD8_Trm) +
+#   gg_plot(sds, col = cd8.sce$CD8_Exh_Prolif) +
+#   xlab("UMAP 1") +
+#   ylab("UMAP 2") +
+#   scale_color_viridis_c(
+#     option = "viridis", 
+#     # name = "CD8 \nresidency\nscore")  +
+#     name = "CD8 \nProlif\nscore")  +
+#   currentThemeTrj 
+dev.off()
+
+
+
+
+
+
+gs <- c( "IFNG", "GZMK", "CCR7", "SELL", "GPR183", "GPR15", "PDCD1", "CTLA4", "HAVCR2", "TIGIT")
+
+pdf(
+  paste0(
+    figPath,
+    "Trajectory_ggplot_ZhangSmart_CD8_MarkersUMAP_ClusterMarkers_selGenes.pdf"
+  ),
+  height = 5,
+  width = 8
+)
+for(i in gs){
+  d0 <- as.matrix(assay(cd8.sce))[i,]
+
+print(ggplot() +
+  geom_point(size = 1) +
+  gg_plot(sds, col = d0) +
+  # gg_plot(sds, col = nk.sce$NK_Exh) +
+  xlab("UMAP 1") +
+  ylab("UMAP 2") +
+  scale_color_viridis_c(
+    option = "viridis", 
+    name = i)  +
+    # name = "NK \nexhaustion\nscore")  +
+  currentThemeTrj )
+}
+dev.off()
+```
+
+### Slingshot on scores
+```{r}
+cd8.sce <- slingshot::slingshot(cd8.sce,
+                                clusterLabels = 'seurat_clusters_markers',
+                                reducedDim = 'MarkerScores')
+summary(cd8.sce$slingPseudotime_1)
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(200)
+plotcol <- colors[cut(cd8.sce$slingPseudotime_1, breaks=200)]
+# 
+# exhCol <- viridis::viridis(100)[cut(cd8.sce$NK_Exh, breaks=100)]
+# trmCol <- viridis::viridis(100)[cut(cd8.sce$NK_Trm, breaks=100)]
+
+pdf(paste0(figPath, "Trajectory_SlingShot_ZhangSmart_CD8_MarkerScores_ClusterMarkers.pdf"), 
+    height = 6, width = 6)
+
+plot(
+  reducedDims(cd8.sce)$MarkerScores,
+  col = cd8Cols[as.factor(cd8.sce$Sub_Cluster)],
+  cex = 0.7, pch = 16,
+  asp = 1
+)
+legend("topleft", legend = unique(as.factor(cd8.sce$Sub_Cluster)),
+       col = cd8Cols[unique(as.factor(cd8.sce$Sub_Cluster))], pch = 19)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$MarkerScores,
+  col = exhCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Exh score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$MarkerScores,
+  col = trmCol,
+  cex = 0.7, pch = 16,
+  asp = 1, main = "Trm score"
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+plot(
+  reducedDims(cd8.sce)$MarkerScores,
+  col = plotcol,
+  pch = 16,
+  asp = 1,
+  cex = 0.7
+)
+lines(SlingshotDataSet(cd8.sce), lwd = 2, col = 'black')
+
+dev.off()
+
+```
+
+
+## Check genes in CD8 10X
+```{r}
+exprData <- as.matrix(GetAssayData(cd8))
+
+currentGene <- t(exprData["DDIT4", , drop = F])
+cell_attrsCD8 <- cd8[[]]
+currentRedData <- cd8@reductions[["umap"]]@cell.embeddings
+cell_attrsCD8$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrsCD8$UMAP_2 <- currentRedData[, "UMAP_2"]
+
+  
+annExpr <- data.frame(cell_attrsCD8, currentGene, check.names = F)
+
+ggplot(annExpr, aes(Sub_Cluster, DDIT4, color = Sub_Cluster)) +
+  geom_boxplot()
+
+ggplot(annExpr, aes(Tissue, DDIT4, color = Tissue)) +
+  geom_boxplot()
+
+ggplot(annExpr, aes(Sub_Cluster, DDIT4, color = Tissue)) +
+  geom_boxplot()
+
+
+
+pdf(paste0(figPath, "Zhang_SmartSeq_CD8_DDIT4_SepTissueBlood.pdf"), height = 5, width = 5)
+
+DimPlot(cd8, group.by = "Sub_Cluster") + scale_color_manual(values = cd8Cols) +
+    theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+DimPlot(cd8, group.by = "Tissue") + scale_color_manual(values = cols) +   
+  theme(legend.position = "top") +
+  guides(color = guide_legend(
+    nrow=3, 
+    override.aes = list(size=3)))
+
+annExpr %>%  arrange(DDIT4) %>%
+  ggplot(., aes(UMAP_1, UMAP_2, color = DDIT4)) +
+  geom_point(alpha = 0.9, size = 0.7) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  theme(legend.position = "top")
+
+annExpr %>%  
+  filter(Tissue == "T") %>% 
+  arrange(DDIT4) %>%
+  ggplot(., aes(UMAP_1, UMAP_2, color = DDIT4)) +
+  geom_point(alpha = 0.9, size = 0.7) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  ggtitle("Tumour") +
+  theme(legend.position = "top")
+  
+ 
+annExpr %>%  
+  filter(Tissue == "N") %>% 
+  arrange(DDIT4) %>%
+  ggplot(., aes(UMAP_1, UMAP_2, color = DDIT4)) +
+  geom_point(alpha = 0.9, size = 0.7) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  ggtitle("Normal") +
+  theme(legend.position = "top")
+
+
+annExpr %>%  
+  filter(Tissue == "P") %>% 
+  arrange(DDIT4) %>%
+  ggplot(., aes(UMAP_1, UMAP_2, color = DDIT4)) +
+  geom_point(alpha = 0.9, size = 0.7) +
+  scale_color_viridis_c() +
+  theme_dark() +
+  ggtitle("Blood") +
+  theme(legend.position = "top")
+
+dev.off()
+  
+
+
+```
+
+
+
+
+
+
+

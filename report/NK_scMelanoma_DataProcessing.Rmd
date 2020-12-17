@@ -1,0 +1,873 @@
+---
+title: 'scRNAseq - NK cells in the De Andrade et al paper'
+author: 
+  - name: 'Sepideh Foroutan'
+    affiliation: 'Huntington Cancer Immunotherapy Lab'
+    url: https://www.monash.edu/discovery-institute/huntington-lab
+date: '22-05-2020'
+output: 
+  rmdformats::readthedown:
+    fig_width: 12
+    fig_height: 5
+    gallery: TRUE
+    highlight: tango
+    lightbox: TRUE
+    self_contained: TRUE
+    thumbnails: FALSE
+    number_sections: TRUE	
+    toc_depth: 3
+    use_bookdown: TRUE
+    code_folding: hide
+  html_document2:
+    df_print: paged
+params:
+  update_date: !r paste("Last updated on:", Sys.Date() )
+editor_options: 
+  chunk_output_type: inline
+---
+`r params$update_date`
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r knitr_init, echo=FALSE, results="asis", cache=FALSE}
+library(knitr)
+library(rmdformats)
+library(DT)
+library(BiocStyle)
+
+options(max.print = "75")
+opts_chunk$set(
+  # echo = FALSE,
+  # cache = FALSE,
+  # prompt = FALSE,
+  # tidy = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  # results = FALSE,
+  root.dir = normalizePath("."))
+opts_knit$set(width = 65)
+```
+
+# Set up and overview
+
+```{r file set up, echo=F, results=F, message=F, warning=F}
+mainDir <- getwd()
+outPath <- "../output/deAndrade/"
+figPath <- "../figure/deAndrade/"
+dataPath <- "../data/"
+scriptPath <- "../script/"
+
+rawPath <- "/Users/mfor0011/Documents/data/NK_Data/singleCell_NK/Human/"
+# sigPath <- "/Users/mfor0011/Documents/data/signatures/ProcessedSigs/"
+
+ifelse(!dir.exists(file.path(mainDir, outPath)), dir.create(file.path(mainDir, outPath)), FALSE)
+ifelse(!dir.exists(file.path(mainDir, figPath)), dir.create(file.path(mainDir, figPath)), FALSE)
+ifelse(!dir.exists(file.path(mainDir, dataPath)), dir.create(file.path(mainDir, dataPath)), FALSE)
+ifelse(!dir.exists(file.path(mainDir, scriptPath)), dir.create(file.path(mainDir, scriptPath)), FALSE)
+
+# library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+library(ggbeeswarm)
+library(SingleCellExperiment)
+library(Seurat)
+
+options(digits = 3)
+
+equal_breaks <- function(n = nBreak, s = scalingFactor, ...){
+  function(x){
+    # rescaling
+    d <- s * diff(range(x)) / (1+2*s)
+    round( seq(min(x)+d, max(x)-d, length=n), 2)
+  }
+}
+
+nBreak = 3
+scalingFactor = 0.05
+
+textSize <- 1.2
+
+currentTheme <- theme_bw() +
+  theme(
+    # panel.background = element_blank()
+    axis.title = element_text(size = rel(textSize)),
+    axis.text = element_text(angle = 0, size = rel(textSize)),
+    # strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black", size = 0.5),
+    legend.position = 'top',
+    legend.title = element_text(size = rel(textSize), face = "italic"),
+    legend.text = element_text(size = rel(textSize)),
+    legend.key.size = unit(1, 'lines'),
+    ## increase the line space
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+cols <-  c(
+  brewer.pal(8, "Dark2")[-5],
+  brewer.pal(10, "Paired"),
+  brewer.pal(12, "Set3"),
+  brewer.pal(9, "Blues")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Oranges")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greens")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Purples")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Reds")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "Greys")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuGn")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "PuRd")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "BuPu")[c(8, 3, 7, 4, 6, 9, 5)],
+  brewer.pal(9, "YlGn")[c(8, 3, 7, 4, 6, 9, 5)])
+
+source(paste0(scriptPath, "visReduction_function.R"))
+
+```
+
+# Read de-Andrade data
+Read deAndrade_CY129_Seurat_SCTransform.RDS instead if you have run teh below code once.
+```{r}
+fileNames <- list.files(paste0(rawPath, "GSE139249_Melanoma_DeAndrade/GSE139249_RAW"))
+
+for(i in fileNames){
+  assign(i, 
+         Seurat::Read10X( data.dir = paste0(rawPath, "GSE139249_Melanoma_DeAndrade/GSE139249_RAW/", i ,"/filtered_gene_bc_matrices/hg38/")))
+  
+}
+
+for(i in fileNames[9:12]){
+  iData <- get(i)
+  sName <- paste0(unlist(strsplit(i, "_"))[2], "_", unlist(strsplit(i, "_"))[3])
+  
+  assign(sName, 
+         Seurat::CreateSeuratObject(counts = iData, project = sName, min.cells = 5, min.feature = 200))
+}
+
+```
+
+16735 genes and 11368 cells.
+```{r}
+## Merge these together:
+CY129 <- merge(CY129.2_blood, y = c(CY129.2_Center, CY129.2_Cortex, CY129.2_Nodule), add.cell.ids = c("Blood", "Center", "Cortex", "Nodule"), project = "deAndrade_CY129")
+
+head(CY129$orig.ident)
+
+CY129@meta.data$Tissue[grepl("blood", CY129$orig.ident, ignore.case = T)] <- "Blood"
+CY129@meta.data$Tissue[grepl("center", CY129$orig.ident, ignore.case = T)] <- "Center"
+CY129@meta.data$Tissue[grepl("cortex", CY129$orig.ident, ignore.case = T)] <- "Cortex"
+CY129@meta.data$Tissue[grepl("nodule", CY129$orig.ident, ignore.case = T)] <- "Nodule"
+
+
+grep("^MT-", rownames(CY129), value = T)
+
+CY129[["percent.mt"]] <- PercentageFeatureSet(CY129, pattern = "^MT-")
+
+```
+
+## Save Seurat object
+```{r}
+
+# saveRDS(CY129, paste0(outPath, "deAndrade_CY129_SeuratObject.RDS"))
+
+# CY129 <- readRDS(paste0(outPath, "deAndrade_CY129_SeuratObject.RDS"))
+```
+
+
+### QC
+```{r, fig.height = 3, fig.width = 7, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <- FeatureScatter(CY129, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "Tissue")
+plot2 <- FeatureScatter(CY129, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "Tissue")
+plot1 + plot2
+
+```
+
+
+Remove cells with high mt percentage and outlier counts:
+8077 cells after this
+```{r}
+CY129 <- CY129[, CY129$nCount_RNA < 60000 & CY129$percent.mt < 20]
+```
+
+```{r, fig.height = 3, fig.width = 7, fig.cap = "Relationship between percent mito genes or number of detected genes and library size after removing outliers"}
+plot1 <- FeatureScatter(CY129, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "Tissue")
+plot2 <- FeatureScatter(CY129, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "Tissue")
+plot1 + plot2
+```
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(CY129, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 1, group.by = "Tissue", pt.size = 0)
+```
+
+
+
+### Normalise using SCTransform
+Note that running `SCTransform` function in the Seurat package uses `sctransform::vst` function, and will replace the below three steps:
+
+- NormalizeData, 
+- ScaleData,  
+- FindVariableFeatures
+
+This will save the transformed data set into the *SCT* assay, and intermediate results are saved in *misc* slot of new assay. The other changes are: *counts* being (corrected) counts, *data* being log1p(counts), *scale.data* being pearson residuals.
+
+To access different data slots after normalisation:
+
+- `ss[["SCT"]]@scale.data`: it has residuals (normalized values), and is used directly as input to PCA. Note that to save memory, we store these values only for variable genes, by setting the return.only.var.genes = TRUE.
+- `ss[["SCT"]]@counts`: it has ‘corrected’ UMI counts
+- `ss[["SCT"]]@data`: it has log-normalized versions of the corrected counts --> for visualisation
+
+
+The data slot is the default used for FeaturePlot, VlnPlot, FindConservedMarkers and the scale.data slot is the default for DoHeatmap, and we use the defaults. Typically scaled data (mean-centered, sd-adjusted) is only used for heatmaps and the rest, especially differential expression, you want to do on normalized count values. DO not re-run SCTransform on the integrated data, but running it on the RNA assay should be fine
+
+```{r, warning = F, message = F}
+
+library(sctransform)
+
+CY129 <- SCTransform(
+  object = CY129,
+  assay = "RNA",
+  new.assay.name = "SCT",
+  do.correct.umi = TRUE,
+  ncells = NULL,
+  variable.features.n = 5000,
+  # variable.features.rv.th = 1.3,
+  vars.to.regress = "percent.mt",  ## NULL by default
+  do.scale = FALSE,
+  do.center = TRUE,
+  conserve.memory = FALSE,
+  return.only.var.genes = TRUE,
+  seed.use = 20201005,
+  verbose = FALSE
+)
+```
+
+## Save data after normalisation but before filtration
+```{r}
+## this data was not filtered for bad cells, min cells, min features
+saveRDS(CY129, paste0(outPath, "deAndrade_CY129_Seurat_SCTransform.RDS"))
+
+
+# saveRDS(CY129, paste0(outPath, "deAndrade_CY129_Seurat_SCTransform_Filtered.RDS"))
+# saveRDS(CY129, paste0(outPath, "deAndrade_CY129_Seurat_SCTransform_FilteredMoreCells.RDS"))
+```
+
+```{r, fig.width = 6, fig.height = 4, fig.cap = "Mean-variance relationship after normalisation, annotated for highly variable genes"}
+gg <- head(VariableFeatures(CY129), 15)
+plot1 <- VariableFeaturePlot(CY129)
+plot2 <- LabelPoints(plot = plot1, points = gg, repel = TRUE)
+plot2
+# or:
+# CombinePlots(list(plot1,plot2))
+```
+
+### Dimension Reduction
+#### PCA plots
+```{r PCA, cache = T}
+CY129 <- RunPCA(CY129, verbose = FALSE)
+```
+
+#### Select number of dimensions
+```{r}
+print(CY129[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+```{r, fig.height = 4, fig.width = 6, fig.cap = "Dimension loadings from PCA"}
+VizDimLoadings(CY129, dims = 1:2, reduction = "pca")
+```
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(CY129, dims = 1:30, cells = 500, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(CY129, ndims = 40)
+```
+
+```{r}
+
+DimPlot(CY129, reduction = "pca", group.by = "Tissue", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+
+```
+
+## Seurat pipeline
+
+### Clustering and UMAP
+```{r}
+CY129 <- FindNeighbors(CY129, dims = 1:30)
+CY129 <- FindClusters(CY129, resolution = 0.5, random.seed = 20201005)
+
+CY129 <- RunUMAP(CY129, dims = 1:30, n.neighbors = 50, min.dist = 0.4, seed.use = 20201005)
+
+anns <- c("seurat_clusters", "Tissue")
+
+pdf(paste0(figPath, "UMAP_deAndrade_CY129.pdf"),
+    height = 5,
+    width = 5)
+
+for (i in anns) {
+  print(
+    DimPlot(CY129, reduction = "umap",
+            group.by = i) +
+      theme_minimal() +
+      scale_color_manual(values = cols) +
+      theme(legend.position = "top") +
+      guides(color = guide_legend(
+        nrow = 3,
+        override.aes = list(size = 3)
+      ))
+  )
+}
+
+dev.off()
+```
+
+### UMAP coloured by quality genes
+We checked well-defined marker genes for each cluster to identify potential contaminating cell populations, such as T cells (CD3D, CD3E, and CD3G), B cells (IGHG1, IGHG2, and JCHAIN), macrophages (LYZ), and melanoma cells (MLANA)
+
+```{r}
+g <- c("CD3D", "CD3E",  "CD3G",
+       "CD8A", "CD8B",
+       "IGHG1", "IGHG2",  "JCHAIN", 
+       "LYZ", "MLANA", 
+       "NCAM1", "NCR1", "KLRG1", "KLRC2", "CD4")
+
+pdf(
+  paste0(figPath, "UMAP_deAndrade_CY129_QualityGenes_SCT.pdf"),
+  height = 7,
+  width = 12
+)
+visReduction_feature (object = CY129,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "SCT",
+    objSlot = "data",
+    # dataType = "data",
+    nrow = 3,
+    ncol = 6,
+    features = g ,
+    textSize = 8,
+    pointSize = 0.4,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+dev.off()
+
+```
+
+We keep 4228 cells with no expression for the Q genes; so we remove 7101 cells that have expression > 0 for one of the above markers.
+```{r}
+exprData  <- as.matrix(GetAssayData(CY129, slot = "data", assay = "SCT"))
+
+g <- c("CD3D", "CD3E",  "CD3G",
+       "IGHG1", "IGHG2",  "JCHAIN",
+       "LYZ", "MLANA")
+exprQ <- exprData[g, ]
+
+kp <- colSums(exprQ == 0) == nrow(exprQ)
+
+# badCells <- colnames(exprQ)[! kp]
+# saveRDS(badCells, paste0(outPath, "BadGenes_CY129.RDS"))
+badCells2 <- colnames(exprQ)[! kp]
+
+# saveRDS(badCells2, paste0(outPath, "BadGenes2_CY129.RDS"))
+```
+
+
+# Remove contaminated cells and repeat the analysis
+Read Seurat object before normalisation and dimension reduction to remove the contaminated cells.
+```{r}
+cy <- readRDS(paste0(outPath, "deAndrade_CY129_SeuratObject.RDS"))
+## 4267 cells
+cy <-  cy[, ! colnames(cy) %in% unique(badCells2)]
+```
+
+
+
+## QC
+```{r, fig.height = 3, fig.width = 7, fig.cap = "Relationship between percent mito genes or number of detected genes and library size (from Seurat)"}
+
+plot1 <- FeatureScatter(cy, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "Tissue")
+plot2 <- FeatureScatter(cy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "Tissue")
+plot1 + plot2
+
+```
+
+
+Remove cells with high mt percentage and outlier counts:
+4195 cells after filtration
+```{r}
+cy <- cy[, cy$nCount_RNA < 25000 & cy$percent.mt < 20 &
+           cy$nFeature_RNA > 500  ]
+```
+
+```{r, fig.height = 3, fig.width = 7, fig.cap = "Relationship between percent mito genes or number of detected genes and library size after removing outliers"}
+plot1 <- FeatureScatter(cy, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "Tissue")
+plot2 <- FeatureScatter(cy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "Tissue")
+plot1 + plot2
+```
+
+```{r, fig.height=8, fig.width = 4, fig.cap = "Number of features, library size and percent mito genes in NK cells across patients"}
+VlnPlot(cy, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 1, group.by = "Tissue", pt.size = 0)
+```
+
+
+
+### Normalise using SCTransform
+Note that running `SCTransform` function in the Seurat package uses `sctransform::vst` function, and will replace the below three steps:
+
+- NormalizeData, 
+- ScaleData,  
+- FindVariableFeatures
+
+This will save the transformed data set into the *SCT* assay, and intermediate results are saved in *misc* slot of new assay. The other changes are: *counts* being (corrected) counts, *data* being log1p(counts), *scale.data* being pearson residuals.
+
+To access different data slots after normalisation:
+
+- `ss[["SCT"]]@scale.data`: it has residuals (normalized values), and is used directly as input to PCA. Note that to save memory, we store these values only for variable genes, by setting the return.only.var.genes = TRUE.
+- `ss[["SCT"]]@counts`: it has ‘corrected’ UMI counts
+- `ss[["SCT"]]@data`: it has log-normalized versions of the corrected counts --> for visualisation
+
+
+The data slot is the default used for FeaturePlot, VlnPlot, FindConservedMarkers and the scale.data slot is the default for DoHeatmap, and we use the defaults. Typically scaled data (mean-centered, sd-adjusted) is only used for heatmaps and the rest, especially differential expression, you want to do on normalized count values. DO not re-run SCTransform on the integrated data, but running it on the RNA assay should be fine
+
+```{r, warning = F, message = F}
+
+library(sctransform)
+
+cy <- SCTransform(
+  object = cy,
+  assay = "RNA",
+  new.assay.name = "SCT",
+  do.correct.umi = TRUE,
+  ncells = NULL,
+  variable.features.n = 5000,
+  # variable.features.rv.th = 1.3,
+  vars.to.regress = "percent.mt",  ## NULL by default
+  do.scale = FALSE,
+  do.center = TRUE,
+  conserve.memory = FALSE,
+  return.only.var.genes = TRUE,
+  seed.use = 20201005,
+  verbose = FALSE
+)
+```
+
+## Save data after filtration and normalisation 
+```{r}
+saveRDS(cy, paste0(outPath, "deAndrade_CY129_Seurat_SCTransform_filteredCells.RDS"))
+```
+
+```{r, fig.width = 6, fig.height = 4, fig.cap = "Mean-variance relationship after normalisation, annotated for highly variable genes"}
+gg <- head(VariableFeatures(cy), 15)
+plot1 <- VariableFeaturePlot(cy)
+plot2 <- LabelPoints(plot = plot1, points = gg, repel = TRUE)
+plot2
+# or:
+# CombinePlots(list(plot1,plot2))
+```
+
+### Dimension Reduction
+#### PCA plots
+```{r PCA, cache = T}
+cy <- RunPCA(cy, verbose = FALSE)
+```
+
+#### Select number of dimensions
+```{r}
+print(cy[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+```{r, fig.height = 4, fig.width = 6, fig.cap = "Dimension loadings from PCA"}
+VizDimLoadings(cy, dims = 1:2, reduction = "pca")
+```
+
+
+```{r, fig.height = 18, fig.width = 6}
+DimHeatmap(cy, dims = 1:30, cells = 500, balanced = TRUE)
+```
+
+```{r}
+ElbowPlot(cy, ndims = 40)
+```
+
+```{r}
+
+DimPlot(cy, reduction = "pca", group.by = "Tissue", dims = 1:2) +
+  scale_color_manual(values = brewer.pal(11, "Paired"))
+
+```
+
+## Seurat pipeline
+
+### Clustering and UMAP
+```{r}
+cy <- FindNeighbors(cy, dims = 1:20)
+cy <- FindClusters(cy, resolution = 0.5, random.seed = 20201005)
+
+cy <- RunUMAP(cy, dims = 1:20, n.neighbors = 50, min.dist = 0.4, seed.use = 20201005)
+
+anns <- c("seurat_clusters", "Tissue")
+
+pdf(paste0(figPath, "UMAP_deAndrade_CY129_FilteredCells.pdf"),
+    height = 5,
+    width = 5)
+
+for (i in anns) {
+  print(
+    DimPlot(cy, reduction = "umap",
+            group.by = i) +
+      theme_minimal() +
+      scale_color_manual(values = cols) +
+      theme(legend.position = "top") +
+      guides(color = guide_legend(
+        nrow = 3,
+        override.aes = list(size = 3)
+      ))
+  )
+}
+
+dev.off()
+```
+
+### UMAP coloured by quality genes
+We checked well-defined marker genes for each cluster to identify potential contaminating cell populations, such as T cells (CD3D, CD3E, and CD3G), B cells (IGHG1, IGHG2, and JCHAIN), macrophages (LYZ), and melanoma cells (MLANA)
+
+```{r}
+g <- c("CD3D", "CD3E",  "CD3G",
+       "CD8A", "CD8B",
+       "IGHG1", "IGHG2",  "JCHAIN", 
+       "LYZ", "MLANA", 
+       "NCAM1", "NCR1", "KLRG1", "KLRC2", "CD4")
+
+pdf(
+  paste0(figPath, "UMAP_deAndrade_CY129_QualityGenes_SCT_FilteredCells.pdf"),
+  height = 7,
+  width = 12
+)
+visReduction_feature (object = cy,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "SCT",
+    objSlot = "data",
+    # dataType = "data",
+    nrow = 3,
+    ncol = 6,
+    features = g ,
+    textSize = 8,
+    pointSize = 0.4,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+dev.off()
+
+```
+
+
+
+## Score cells
+
+```{r}
+source(paste0(scriptPath, "ReadSignatures.R"))
+```
+
+```{r, message = F, warning = F}
+library(singscore)
+
+rd <- rankGenes(as.matrix(GetAssayData(cy, "data", "SCT")))
+
+
+cyScoresDisp <- multiScore(rd, 
+                         upSetColc = AllSigsCollection, 
+                         knownDirection = T, 
+                         centerScore = F)
+
+cyScores <-
+  data.frame(t(cyScoresDisp$Scores),
+             check.rows = F,
+             check.names = F)
+
+
+scoreNames <- c(colnames(cyScores))
+scoreNames <- scoreNames[order(scoreNames)]
+
+
+##----- Add these to annotation data:
+cy@meta.data <- data.frame(cy@meta.data , cyScores)
+
+```
+
+
+### Color UMAP for markers
+
+```{r}
+cell_attrs_cy129 <- cy[[]]
+currentRedData <- cy@reductions[["umap"]]@cell.embeddings
+
+cell_attrs_cy129$UMAP_1 <- currentRedData[, "UMAP_1"]
+cell_attrs_cy129$UMAP_2 <- currentRedData[, "UMAP_2"]
+```
+
+
+```{r}
+
+exprData  <- as.matrix(GetAssayData(cy, slot = "data", assay = "SCT"))
+
+# gg <-  NK_ExhMarker
+gg <-  NK_TrmMarker
+
+
+## ETV1 does not exist in 10X data
+exprData10x_Genes <-
+  exprData[rownames(exprData) %in% gg,]
+
+exprData10x_Genes <-
+  data.frame(cell_attrs_cy129, 
+             data.frame(t(exprData10x_Genes), check.names = F), 
+             check.names = F)
+
+
+exprLong10x <- exprData10x_Genes %>% 
+  pivot_longer(
+    values_to = "Expression",
+    names_to = "Genes" ,
+    cols = 100:ncol(exprData10x_Genes)
+  ) %>% 
+  data.frame(check.names = F)
+
+
+pdf(
+  paste0(figPath, "UMAP_deAndrade_CY129_NK_Trm_SCT_filteredMoreCells.pdf"),
+  height = 12,
+  # height = 4,
+  width = 15
+)
+exprLong10x %>% 
+  group_by(Genes) %>% 
+  arrange(Expression) %>% 
+ggplot(., aes(x = UMAP_1, y = UMAP_2, color = Expression)) +
+  geom_point(alpha = 0.8, cex = 0.1) +
+  facet_wrap(~ Genes, ncol = 10) +
+  scale_color_viridis_c() +
+  theme_dark()+
+  theme(legend.position = "top")
+
+visReduction_feature (object = cy,
+    reduction = "umap",
+    dim1Name = "UMAP_1",
+    dim2Name = "UMAP_2",
+    objAssay = "SCT",
+    objSlot = "data",
+    nrow = 7,
+    # nrow = 2,
+    ncol = 10,
+    features = gg,
+    textSize = 8,
+    pointSize = 0.4,
+    pointAlpha = 1,
+    plotTitle = "",
+    plotHexbin = FALSE,
+    actionGene = "median")
+dev.off()
+
+
+
+```
+
+### Color UMAP based on scores
+```{r}
+
+pdf(paste0(figPath, "UMAP_deAndrade_CY129_ScoresSCT_filteredCells.pdf"),
+    height = 5, width = 5)
+
+for(i in anns){
+  print(
+    cell_attrs_cy129 %>%
+    ggplot(.,
+           aes_string(x = "UMAP_1",
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.7, cex = 0.4) +
+  scale_color_manual(values = cols)+
+  theme_minimal() +
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 2,
+                              override.aes = list(size = 3)))
+  )
+}
+
+for(i in c(scoreNames, "nCount_RNA","nFeature_RNA", "nFeature_SCT")){
+  print(
+    cell_attrs_cy129 %>%
+      arrange(!!sym(i)) %>%
+    ggplot(.,
+           aes_string(x = "UMAP_1",
+                   y = "UMAP_2",
+                   color = i)) +
+  geom_point(alpha = 0.9, cex = 0.5) +
+  scale_color_viridis_c() +
+  theme_dark() +
+          theme(
+        legend.spacing = unit(1.5, "mm"),
+        legend.position = "top",
+        legend.key.width = unit(0.9, "cm"),
+        legend.title = element_text(size = 8, face = "italic"),
+        legend.text = element_text(size = 8)
+      )
+  )
+}
+dev.off()
+```
+
+```{r}
+
+pdf(
+  paste0(figPath, "UMAP_PCA_Blend_deAndrade_CY129_FilteredCells.pdf"),
+  height = 3,
+  width = 12
+)
+FeaturePlot(cy,
+            features = c("NK_Trm", "NK_Exh"),
+            pt.size = 0.7,
+            order = T, 
+            blend = T,
+            blend.threshold = 0.5,
+            cols =  c("grey90", "orange2", "blue"),
+            reduction = "umap") 
+
+FeaturePlot(cy,
+            features = c("NK_Trm", "NK_Exh"),
+            pt.size = 0.7,
+            order = T, 
+            blend = T,
+            blend.threshold = 0.5,
+            cols =  c("grey90", "orange2", "blue"),
+            reduction = "pca") 
+
+
+dev.off()
+```
+
+
+### Boxplot Scores vs Tissues
+We replace Trm with Res in the signature names to avoid confusion with Trm specific to T cells.
+```{r}
+
+scoreLong <- cell_attrs_cy129 %>%
+  pivot_longer(
+    .,
+    cols = which(colnames(cell_attrs_cy129) %in% scoreNames),
+    names_to = "Signature",
+    values_to = "Score"
+  ) %>% 
+  data.frame(check.names = F)
+
+scoreLong$Signature <- gsub("_Trm", "_Res", scoreLong$Signature)
+
+pdf(
+  paste0(figPath, "Boxplot_deAndrade_ScoresSCT_Tissue_filteredCells.pdf"),
+  height = 20,
+  width = 22
+)
+print(
+  scoreLong %>%
+    ggplot(., aes(
+      x = Tissue, y = Score, color = Tissue
+    )) +
+    geom_boxplot() +
+    facet_wrap( ~ Signature, ncol = 10, scales = "free") +
+    scale_color_manual(values = cols) +
+    theme_bw() +
+    theme(
+      legend.position = "top",
+      axis.title.x = element_blank(),
+      axis.text.x = element_text(angle = 60, hjust = 1)
+    )
+)
+
+dev.off()
+
+
+pdf(
+  paste0(figPath, "Boxplot_deAndrade_ScoresSCT_NKResExh_Tissue_filteredCells.pdf"),
+  height = 2.3,
+  width = 5.5
+)
+print(
+  scoreLong %>%
+  filter(Signature  %in%  c("NK_Exh", "NK_Res")) %>% 
+    ggplot(., aes(
+      x = Tissue, y = Score, color = Tissue
+    )) +
+    geom_boxplot(show.legend = F) +
+    facet_wrap( ~ Signature, ncol = 2, scales = "free") +
+    scale_color_manual(values = cols) +
+    theme_bw() +
+    scale_y_continuous(
+                       breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                       expand = c(scalingFactor, 0)
+                     ) +
+    theme(
+      legend.position = "top",
+      axis.title.x = element_blank(),
+      axis.text.x = element_text(angle = 60, hjust = 1)
+    )
+)
+
+dev.off()
+
+```
+
+## save final data
+```{r}
+exprData <- as.matrix(GetAssayData(cy, assay = "SCT" ))
+
+
+currentRedData <- cy@reductions[["umap"]]@cell.embeddings
+cy$UMAP_1 <- currentRedData[, "UMAP_1"]
+cy$UMAP_2 <- currentRedData[, "UMAP_2"]
+
+
+
+currentRedData <- cy@reductions[["pca"]]@cell.embeddings
+cy$PC_1 <- currentRedData[, "PC_1"]
+cy$PC_2 <- currentRedData[, "PC_2"]
+
+
+annData <- cy[[]]
+
+write.table(
+  annData,
+  paste0(outPath, "deAndrade_CY129_ScoreAnnotationUMAP.txt"),
+  row.names = T,
+  sep = "\t"
+)
+
+write.table(
+  exprData,
+  paste0(outPath, "deAndrade_CY129_expression_filtered_SCTransform.txt"),
+  row.names = T,
+  sep = "\t"
+)
+```
+
+
+```{r}
+saveRDS(cy, paste0(outPath, "deAndrade_CY129_Seurat_SCTransform_filteredCells_ScoreUMAP.RDS"))
+```
+
+```{r}
+cy <- readRDS(paste0(outPath, "deAndrade_CY129_Seurat_SCTransform_filteredCells_ScoreUMAP.RDS"))
+```
+
