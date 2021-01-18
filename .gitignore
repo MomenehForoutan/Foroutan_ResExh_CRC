@@ -3,9 +3,10 @@
 .RData
 .Ruserdata
 
-
+figure/
 script/ReadSignatures.R
 script/ReadSignatures_initial.R
+script/boxplot_vertical_ggplot.R
 
 data/CCLE_LCM/
 data/deAndrade/
@@ -13,12 +14,15 @@ data/deVries/
 data/GSE146771/
 data/James_GutAtlas/
 data/GSE146771_Zhang_CRC/
+data/TCGA/
+data/Marisa/DontPush/
 
 output/CD4/DontPush/
 output/CD8/DontPush/
 output/NK/DontPush/
 output/CompareSigs/DontPush/
 output/deAndrade/
+output/CompareSurvival/
 
 report/CD4_ResExh_CRC_files/
 report/CD4_ResExh_CRC_cache/

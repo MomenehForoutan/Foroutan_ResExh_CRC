@@ -1,4 +1,7 @@
-### Point on curve function ----
+### The code below have been taken from online sources
+## See https://github.com/kstreet13/slingshot/issues/73
+
+## Point on curve function ----
 points_on_curve <- function(curve, lambda, ...) {
   UseMethod("points_on_curve", curve)
 }

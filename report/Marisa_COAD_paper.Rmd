@@ -1,19 +1,47 @@
 ---
-title: "Marisa COAD survival"
-output: html_document
+title: 'Survival and mutation analyses of the Marisa et al COAD data based on the Res and Exh scores'
+author: 
+  - name: 'Momeneh (Sepideh) Foroutan and Ramyar Molania'
+    affiliation: 'Huntington Cancer Immunotherapy Lab'
+    url: https://www.monash.edu/discovery-institute/huntington-lab
+date: '12-06-2020'
+output:
+  rmdformats::readthedown:
+    fig_width: 12
+    fig_height: 6
+    gallery: TRUE
+    highlight: tango
+    lightbox: TRUE
+    self_contained: TRUE
+    thumbnails: FALSE
+    number_sections: TRUE	
+    toc_depth: 4
+    use_bookdown: TRUE
+    code_folding: hide
+  html_document2:
+    df_print: paged
+params:
+  update_date: !r paste("Last updated on:", Sys.Date() )
+editor_options: 
+  chunk_output_type: inline
 ---
+`r params$update_date`
 
-# Set up
+<style>
+body {
+text-align: justify}
+</style>
+
+# Set up and overview
+In this document, we read and process the COAD microarray data (GSE39582) from [Marisa et al](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3660251/), we perform CMS clustering, and visualise the associations between Res_bulk and Exh_bulk scores and different sample annotations. We then perform survival analysis to examine the association of the scores with survival outcomes.
 ```{r}
 mainDir <- getwd()
-outPath <- "../output/Microarray/paper/"
-figPath <- "../figure/Microarray/paper/"
+outPath <- "../output/Marisa/"
+figPath <- "../figure/Marisa/"
 dataPath <- "../data/"
 scriptPath <- "../script/"
 
-crcPath <- "/Users/mfor0011/Documents/data/CRC/CRC_GEO/"
-tpmPath <- "/Users/mfor0011/Documents/data/NK_Data/singleCell_NK/Human/GSE146771_Zhang_CRC/"
-sigPath <- "/Users/mfor0011/Documents/data/signatures/ProcessedSigs/"
+marisaPath <- "../data/Marisa/"
 
 ifelse(!dir.exists(file.path(mainDir, outPath)), dir.create(file.path(mainDir, outPath)), FALSE)
 ifelse(!dir.exists(file.path(mainDir, figPath)), dir.create(file.path(mainDir, figPath)), FALSE)
@@ -83,18 +111,90 @@ source(paste0(scriptPath, "visReduction_function.R"))
 source("../script/coxph_analysis.R")
 source("../script/survival_plot.R")
 ```
-# Read signatures
+
+## Read signatures
+We read Res and Exh signatures that we obtained and focus on the genes that are not highly expressed in cancer cells (those that passed the bulk cancer threshold). Additionally, we defined two other types of signatures for eacj of the Exh and Res signatures: All_Res[Exh]_Bulk and CD8NK_Res[Exh]_Bulk by merging all Res[Exh]_Bulk signature genes and by merging only the CD8_Res[Exh]_Bulk and NK_Res[Exh]_Bulk. 
+We also read several cancer related signatures as well as a few other immune related signatures collected from the literature as well as MSigDB. Here are the list of the signatures that we used in this document.
 ```{r}
 source(paste0(scriptPath, "ReadSignaturesTum_paper.R"))
+names(AllSigsCollection)
 ```
 
 # Marisa data
-https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3660251/
+We use the GEOquery package to download these data on the 18th of March 2019 (54674 features, 585 samples). Then, the SummarizedExperiment (SE) object was generated using the SummarizedExperiment Bioconductor package. Here, we comment all the code related to the download and generation of the SE and the annotation file, and directly read the RDS file containing the processed expression data and the annotation file.
 
 ```{r}
-library(hgu133plus2.db)
-library(SummarizedExperiment)
-# mr <- readRDS(paste0(crcPath, "GSE39582/GSE39582_SummExpr.RDS"))
+# library(GEOquery)
+# library(Biobase)
+# ## download GSE39582_series_matrix.txt.gz which has 164.2 MB 
+# gse <- getGEO("GSE39582", GSEMatrix = TRUE)
+# show(gse)
+# 
+## Extract sample and gene annotations, as well as expression from the GSE. 
+## We also deal with the missing row in the data.
+# ##----- sample annot
+# gseAnnot <- pData(phenoData(gse[[1]]))
+# ## row names in annotation data are wrongly one of the expression rows
+# row.names(gseAnnot) <- gseAnnot$geo_accession
+# 
+# ## Clean the annotation file:
+# # colnames(gseAnnot)[colnames(gseAnnot) == "characteristics_ch1.11"] <- "rfs.event"
+# 
+# 
+# ##----- Gene annot
+# gseGeneAnnot <- fData(gse[[1]])
+# gseGeneAnnot <-
+#   gseGeneAnnot[, c(
+#     "ID",
+#     "Gene Symbol",
+#     "ENTREZ_GENE_ID",
+#     "Gene Title",
+#     "GB_ACC",
+#     "Annotation Date",
+#     "Sequence Source"
+#   )]
+# 
+# ##------ Expression matrix
+# gseExpr <- as.data.frame(exprs(gse[[1]]))
+# 
+# 
+# ## Colnames in expression data are wrongly one of the expression rows,
+# ## same as in the sample annotation data
+# all(row.names(pData(phenoData(gse[[1]]))) == colnames(gseExpr))
+# 
+# ## Add the missing probe expression to the expression data
+# missingProbe <- as.data.frame(matrix(as.numeric(colnames(gseExpr)), nrow = 1))
+# row.names(missingProbe) <- "1007_s_at"
+# colnames(missingProbe)  <- row.names(gseAnnot)
+#  
+# colnames(gseExpr) <- row.names(gseAnnot)
+# gseExpr <- rbind(missingProbe, gseExpr)
+# 
+# ## Add the missing gene annotation to the gene annotation data
+# missingGeneAnnot <- data.frame(
+#   "ID" = "1007_s_at",
+#   "Gene Symbol" = "DDR1",
+#   "ENTREZ_GENE_ID" = "780",
+#   "Gene Title" = "Discoidin Domain Receptor Tyrosine Kinase 1",
+#   "GB_ACC" = "NA", 
+#   "Annotation Date" = "Oct 6, 2014",
+#   "Sequence Source" = "NA"
+#   , check.names = F)
+# row.names(missingGeneAnnot) <- "1007_s_at"
+# gseGeneAnnot <- rbind(missingGeneAnnot, gseGeneAnnot)
+# 
+# library(SummarizedExperiment)
+# gse_se <- SummarizedExperiment(
+#   assays = list(rma = as.matrix(gseExpr)), 
+#   colData = DataFrame(gseAnnot), 
+#   rowData = DataFrame(gseGeneAnnot))
+# 
+# saveRDS(gse_se, paste0(marisaPath, "GSE39582_SummExpr.RDS"))
+
+
+# library(hgu133plus2.db)
+# library(SummarizedExperiment)
+# mr <- readRDS(paste0(marisaPath, "GSE39582/GSE39582_SummExpr.RDS"))
 # assay(mr)[1:4,1:5]
 # 
 # mr <- mr[! grepl("///", rowData(mr)$Gene.Symbol), ]
@@ -119,9 +219,9 @@ library(SummarizedExperiment)
 # 
 # MarisaDataList <- list(eMar = eMar, annMar = annMar)
 
-# saveRDS(MarisaDataList, paste0(outPath, "Marisa_Expr_Annot.RDS"))
+# saveRDS(MarisaDataList, paste0(marisaPath, "DontPush/Marisa_Expr_Annot.RDS"))
 
-MarisaDataList <- readRDS(paste0(outPath, "Marisa_Expr_Annot.RDS"))
+MarisaDataList <- readRDS(paste0(marisaPath, "DontPush/Marisa_Expr_Annot.RDS"))
 eMar <- MarisaDataList$eMar
 annMar <- MarisaDataList$annMar
 
@@ -173,6 +273,7 @@ annMarFilt$Age_Status[annMarFilt$Age <= median(annMarFilt$Age, na.rm = T)] <- "Y
 ```
 
 ## CMS
+Perform CMS clustering only on Cancer samples, and add this to the annotation data.
 ```{r}
 # eMarFilt <- eMar[, annMar$Sample_Type == "Cancer"]
 # annMarFilt <- annMar[ annMar$Sample_Type == "Cancer", ]
@@ -209,15 +310,12 @@ annMar$CMS[annMar$Sample_Type == "Normal"] <- "N"
 row.names(annMar) <- annMar$geo_accession
 annMar <- annMar[colnames(eMar), ]
 
-all(rownames(annMar) == colnames(eMar))
-
+# all(rownames(annMar) == colnames(eMar))
 
 ```
 
 ## Score samples
-
-
-
+When filtering and processing the data, we made sure that we are keeping genes (mostly immune/cancer related genes) that we also retained during the analysis and processing the TCGA COAD data. We have exported these genes as an RDS file and use that here. 
 ```{r}
 # gg <- unique(
 #   c(
@@ -234,7 +332,7 @@ all(rownames(annMar) == colnames(eMar))
 #   )
 # )
 
-kpGenes <- readRDS("../kpGenes.RDS")
+kpGenes <- readRDS(paste0(marisaPath, "kpGenes.RDS"))
 
 kp1 <- rowSums(eMar > 4) >= 0.5 * ncol(eMar)
 kp2 <- rownames(eMar)  %in% unique(
@@ -300,8 +398,10 @@ imSigs <- scoreNames[grepl("Res", scoreNames) |
  
 ```
 
-### General annotations: Stage, subtypes, gender, location, chemo
-```{r}
+### Boxplots stratified by MMR, CMS and tumour location
+MSI status in the MArisa et al paper was analyzed using a panel of five different microsatellite loci from the Bethesda reference panel. MSI-high tumors were further classified as deficient MMR (dMMR), and both MSI-low and MSS tumors as proficient MMR (pMMR).
+These reproduces Figure 4A and 4B (right panels) and Suppl Figure 8 (right panel).
+```{r, fig.height = 5, fig.width = 6}
 library(ggsignif)
 
 scoreColumns <- which(colnames(annMar)  %in% scoreNames)
@@ -314,6 +414,39 @@ annMarLong <- annMar %>%
   ) %>%
   data.frame(check.rows = F, check.names = F)
 
+
+##---- MMR
+colnames(annMarLong)[colnames(annMarLong) == "mmr.status.ch1"] <- "MMR"
+
+# pdf(paste0(figPath, "Marisa_Boxplot_Scores_MMR_Bulk.pdf"), height = 6, width = 5.2)
+annMarLong %>%
+  filter(Sample_Type == "Cancer") %>%
+  filter(MMR != "N/A") %>%
+  filter(grepl("Bulk", Signature)) %>%
+  filter(! grepl("CD8NK", Signature) & ! grepl("All", Signature)) %>%
+  ggplot(., aes(x = MMR, y = Score, color = MMR)) +
+  geom_boxplot() +
+  geom_signif(
+    comparisons = list(c("dMMR", "pMMR")),
+    map_signif_level = TRUE,
+    tip_length = 0,
+    vjust = 1.4,
+    col = "gray40"
+  ) +
+  facet_wrap( ~ Signature, scales = "free", ncol = 2) +
+  scale_y_continuous(breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                     expand = c(scalingFactor, 0)) +
+  scale_color_manual(values =  rev(c(brewer.pal(9, "Purples") [c(4, 6, 9)]))) +
+  currentTheme +
+    theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+        axis.ticks = element_blank(),
+    legend.position = "bottom"
+    )
+# dev.off()
+
+##------- CMS
 cmsCol <- c(
   brewer.pal(11, "BrBG")[3],
   brewer.pal(11, "PRGn")[2],
@@ -322,7 +455,7 @@ cmsCol <- c(
   "grey50"
 )
 
-pdf(paste0(figPath, "Marisa_Boxplot_Scores_CMS_Bulk.pdf"), height = 6, width = 5.5)
+# pdf(paste0(figPath, "Marisa_Boxplot_Scores_CMS_Bulk.pdf"), height = 6, width = 5.5)
 annMarLong %>%
   filter(complete.cases(CMS)) %>%
   filter(grepl("Bulk", Signature)) %>%
@@ -340,7 +473,7 @@ annMarLong %>%
         axis.ticks = element_blank(),
     legend.position = "bottom"
     )
-dev.off()
+# dev.off()
 
 
 annMarLong$tumor.location.ch1[
@@ -351,11 +484,11 @@ annMarLong$tumor.location.ch1[
   annMarLong$tumor.location.ch1 == "proximal"
 ] <- "Proximal"
 
-pdf(
-  paste0(figPath, "Marisa_Boxplot_Scores_Location_Cancer_Bulk.pdf"),
-  height = 6,
-  width = 5
-)
+# pdf(
+#   paste0(figPath, "Marisa_Boxplot_Scores_Location_Cancer_Bulk.pdf"),
+#   height = 6,
+#   width = 5
+# )
 annMarLong %>%
   filter(Sample_Type == "Cancer") %>%
   filter(grepl("Bulk", Signature)) %>%
@@ -382,55 +515,12 @@ scale_color_manual(values = brewer.pal(8, "Greys")[c(5, 7)]) +
     axis.ticks = element_blank(),
     legend.position = "bottom"
   )
-dev.off()
-
-```
-
-### MSI 
-
-MSI was analyzed using a panel of five different microsatellite loci from the Bethesda reference panel. MSI-high tumors were further classified as deficient MMR (dMMR), and both MSI-low and MSS tumors as proficient MMR (pMMR). 
-
-CIN (chromosomal instability) was defined from CGH profiles: samples with at least 20% gain or loss of whole chromosomes or fractions of chromosomes were scored as CIN+ 
-
-CIMP (CpG island methylator phenotype) status was determined using a panel of five markers (CACNA1G, IGF2, NEUROG1, RUNX3, and SOCS1) 
-
-```{r}
-
-colnames(annMarLong)[colnames(annMarLong) == "mmr.status.ch1"] <- "MMR"
-
-
-pdf(paste0(figPath, "Marisa_Boxplot_Scores_MMR_Bulk.pdf"), height = 6, width = 5.2)
-
-annMarLong %>%
-  filter(Sample_Type == "Cancer") %>%
-  filter(MMR != "N/A") %>%
-  filter(grepl("Bulk", Signature)) %>%
-  filter(! grepl("CD8NK", Signature) & ! grepl("All", Signature)) %>%
-  ggplot(., aes(x = MMR, y = Score, color = MMR)) +
-  geom_boxplot() +
-  geom_signif(
-    comparisons = list(c("dMMR", "pMMR")),
-    map_signif_level = TRUE,
-    tip_length = 0,
-    vjust = 1.4,
-    col = "gray40"
-  ) +
-  facet_wrap( ~ Signature, scales = "free", ncol = 2) +
-  scale_y_continuous(breaks = equal_breaks(n = nBreak, s = scalingFactor),
-                     expand = c(scalingFactor, 0)) +
-  scale_color_manual(values =  rev(c(brewer.pal(9, "Purples") [c(4, 6, 9)]))) +
-  currentTheme +
-    theme(
-    axis.text.x = element_blank(),
-    axis.title.x = element_blank(),
-        axis.ticks = element_blank(),
-    legend.position = "bottom"
-    )
-dev.off()
+# dev.off()
 
 ```
 
 ### Scatterplot of score pairs
+Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. The first bit of code generates many scatterplots comparing each signature with all other signatures; you could uncomment this section and export that in a PDF file to avoid overloading the html file. Here, we have commented the first section and only generate the scatterplots presented in the paper.
 ```{r}
 colnames(annMar)[colnames(annMar) == "mmr.status.ch1"] <- "MMR"  
 annMar$MMR <- as.character(annMar$MMR)
@@ -444,119 +534,184 @@ cmsCol <- c(
 )
 
 
-pdf(
-  paste0(
-    figPath,
-    # "ScatterPlots_Marisa_ExhTrmCancerScorePairs_colMMR_rmNormal_Lines.pdf"
-    "ScatterPlots_Marisa_ExhTrmCancerScorePairs_colCMS_rmNormal_Lines.pdf"
-  ),
-  height = 4.7,
-  width = 4.3
-)
-for(im in imSigs) {
-  for (ca in canSigs) {
-    
-      palette <- cmsCol
-      # palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
-      pal <- list(values=palette, na.value="gray80")
-    
-      d <- annMar %>%
-      filter(! annMar$Sample_Type  %in%  "Normal") %>%
-      mutate(medIm = median(!!sym(im)),
-             medCa = median(!!sym(ca)))
-      
-          corVal <- round(cor.test(d[, im], d[, ca])[[4]], 2)
-          
-    print(
-      d %>% 
-        ggplot(.,
-              # aes_string(im, ca, color = "MMR")) +
-               aes_string(im, ca, color = "CMS")) +
-        geom_point(alpha = 0.8) +
-        geom_vline(xintercept = d$medIm) +
-        geom_hline(yintercept = d$medCa) +
-        invoke(scale_colour_manual, pal) +
-        scale_x_continuous(
-                       breaks = equal_breaks(n = nBreak, s = scalingFactor),
-                       expand = c(scalingFactor, 0)
-                     ) +
-        scale_y_continuous(
-                       breaks = equal_breaks(n = nBreak, s = scalingFactor),
-                       expand = c(scalingFactor, 0)
-                     ) +
-        ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
-        currentTheme + 
-        guides(color = guide_legend(nrow=2))
-    )
-  }
-}
-
-dev.off()
-
-
-
-pdf(
-  paste0(
-    figPath,
-    "ScatterPlots_Marisa_ExhTrmScorePairs_colCMS_rmNormal_Lines.pdf"
-    # "ScatterPlots_Marisa_ExhTrmScorePairs_colMMR_rmNormal_Lines.pdf"
-  ),
-  height = 4.7,
-  width = 4.3
-)
-
-      palette <- cmsCol
-      # palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
-      pal <- list(values=palette, na.value="gray80")
-      
-for(im in imSigs) {
-  Others <- imSigs[imSigs != im]
-  
-  for (ot in Others) {
-    
-    d <- annMar %>%
-      filter(! annMar$Sample_Type  %in%  "Normal") %>%
-      mutate(medIm = median(!!sym(im)),
-             medOt = median(!!sym(ot)))
-    
-    corVal <- round(cor.test(d[, im], d[, ot])[[4]], 2)
-      
-    print(
-      d %>% 
-        ggplot(.,
-               # aes_string(im, ot, color = "MMR")) +
-               aes_string(im, ot, color = "CMS")) +
-        geom_point(alpha = 0.8) +
-        invoke(scale_colour_manual, pal) +
-        geom_vline(xintercept = d$medIm) +
-        geom_hline(yintercept = d$medOt) +
-        scale_x_continuous(
-                       breaks = equal_breaks(n = nBreak, s = scalingFactor),
-                       expand = c(scalingFactor, 0)
-                     ) +
-        scale_y_continuous(
-                       breaks = equal_breaks(n = nBreak, s = scalingFactor),
-                       expand = c(scalingFactor, 0)
-                     ) +
-        ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
-        currentTheme + 
-        guides(color = guide_legend(nrow=2))
-    )
-  }
-}
-
-dev.off()
+# pdf(
+#   paste0(
+#     figPath,
+#     "ScatterPlots_Marisa_ExhTrmScorePairs_colCMS_rmNormal_Lines.pdf"
+#     # "ScatterPlots_Marisa_ExhTrmScorePairs_colMMR_rmNormal_Lines.pdf"
+#   ),
+#   height = 4.7,
+#   width = 4.3
+# )
+# 
+#       palette <- cmsCol
+#       # palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
+#       pal <- list(values=palette, na.value="gray80")
+#       
+# for(im in imSigs) {
+#   Others <- imSigs[imSigs != im]
+#   
+#   for (ot in Others) {
+#     
+#     d <- annMar %>%
+#       filter(! annMar$Sample_Type  %in%  "Normal") %>%
+#       mutate(medIm = median(!!sym(im)),
+#              medOt = median(!!sym(ot)))
+#     
+#     corVal <- round(cor.test(d[, im], d[, ot])[[4]], 2)
+#       
+#     print(
+#       d %>% 
+#         ggplot(.,
+#                # aes_string(im, ot, color = "MMR")) +
+#                aes_string(im, ot, color = "CMS")) +
+#         geom_point(alpha = 0.8) +
+#         invoke(scale_colour_manual, pal) +
+#         geom_vline(xintercept = d$medIm) +
+#         geom_hline(yintercept = d$medOt) +
+#         scale_x_continuous(
+#                        breaks = equal_breaks(n = nBreak, s = scalingFactor),
+#                        expand = c(scalingFactor, 0)
+#                      ) +
+#         scale_y_continuous(
+#                        breaks = equal_breaks(n = nBreak, s = scalingFactor),
+#                        expand = c(scalingFactor, 0)
+#                      ) +
+#         ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
+#         currentTheme + 
+#         guides(color = guide_legend(nrow=2))
+#     )
+#   }
+# }
+# 
+# dev.off()
 
 ```
 
+**Scatterplot of CD8NK_Exh_Bulk vs TGFb_Signaling, coloured by CMS subtypes (Figure 6B, right scatterplot)**
+```{r, fig.height = 4.7, fig.width = 4.3}
+x <- "CD8NK_Exh_Bulk"
+y <- "TGFb_Signaling"
 
 
+d <- annMar %>%
+  filter(! annMar$Sample_Type  %in%  "Normal") %>%
+  mutate(medIm = median(!!sym(x)),
+         medOt = median(!!sym(y)))
+
+palette <- cmsCol
+# palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
+pal <- list(values=palette, na.value="gray80")
+
+corVal <- round(cor.test(d[, x], d[, y])[[4]], 2)
+
+print(
+  d %>%
+    ggplot(.,
+           # aes_string(x, y, color = "MMR")) +
+           aes_string(x, y, color = "CMS")) +
+    geom_point(alpha = 0.8) +
+    invoke(scale_colour_manual, pal) +
+    geom_vline(xintercept = d$medIm) +
+    geom_hline(yintercept = d$medOt) +
+    scale_x_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    scale_y_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
+    currentTheme +
+    guides(color = guide_legend(nrow=2))
+)
+```
+
+
+**Scatterplot of CD8NK_Exh_Bulk vs NK_Res_Bulk, coloured by CMS subtypes (Figure 7B, right scatterplot)**
+```{r, fig.height = 4.7, fig.width = 4.3}
+x <- "CD8NK_Exh_Bulk"
+y <- "NK_Res_Bulk"
+
+d <- annMar %>%
+  filter(! annMar$Sample_Type  %in%  "Normal") %>%
+  mutate(medIm = median(!!sym(x)),
+         medOt = median(!!sym(y)))
+
+palette <- cmsCol
+# palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
+pal <- list(values=palette, na.value="gray80")
+
+corVal <- round(cor.test(d[, x], d[, y])[[4]], 2)
+
+print(
+  d %>%
+    ggplot(.,
+           # aes_string(x, y, color = "MMR")) +
+           aes_string(x, y, color = "CMS")) +
+    geom_point(alpha = 0.8) +
+    invoke(scale_colour_manual, pal) +
+    geom_vline(xintercept = d$medIm) +
+    geom_hline(yintercept = d$medOt) +
+    scale_x_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    scale_y_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
+    currentTheme +
+    guides(color = guide_legend(nrow=2))
+)
+```
+
+
+**Scatterplot of NK_Res_Bulk vs NK_Exh_Bulk, coloured by CMS subtypes (Figure 8B, right scatterplot)**
+```{r, fig.height = 4.7, fig.width = 4.3}
+x <- "NK_Res_Bulk"
+y <- "NK_Exh_Bulk"
+
+d <- annMar %>%
+  filter(! annMar$Sample_Type  %in%  "Normal") %>%
+  mutate(medIm = median(!!sym(x)),
+         medOt = median(!!sym(y)))
+
+palette <- cmsCol
+# palette <- rev(c(brewer.pal(9, "Purples") [c( 6, 9)]))
+pal <- list(values=palette, na.value="gray80")
+
+corVal <- round(cor.test(d[, x], d[, y])[[4]], 2)
+
+print(
+  d %>%
+    ggplot(.,
+           # aes_string(x, y, color = "MMR")) +
+           aes_string(x, y, color = "CMS")) +
+    geom_point(alpha = 0.8) +
+    invoke(scale_colour_manual, pal) +
+    geom_vline(xintercept = d$medIm) +
+    geom_hline(yintercept = d$medOt) +
+    scale_x_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    scale_y_continuous(
+                   breaks = equal_breaks(n = nBreak, s = scalingFactor),
+                   expand = c(scalingFactor, 0)
+                 ) +
+    ggtitle(paste0("Marisa (cor = ", corVal, ")")) +
+    currentTheme +
+    guides(color = guide_legend(nrow=2))
+)
+```
 
 
 # OS
-
-561 samples
 ```{r}
+# 561 samples
 library(survival)
 timeCol = "OS.time"
 eventCol = "OS"
@@ -567,10 +722,8 @@ annMarFilt <- annMarFilt[complete.cases(annMarFilt[, timeCol]), ]
 annMarFilt$MMR[annMarFilt$MMR == "N/A"] <- NA
 ```
  
-
 ## Lasso for Cox to choose covariates
-In order to decide which of the clinical factors to include, we need to perform lasso on the Cox models. We then use the coef of the lambda.min to decide which ones to include or exclude from the model. 
-Based on the results below, we need to include all variables except for MMR.
+In order to decide which of the clinical factors to include, we perform lasso on the Cox models. We then use the coef of the lambda.min to decide which ones to include or exclude from the model. Based on the results below, we decide include 3 variables CMS, Age and Stage, as they all had non-zero lambda.min.but we do not include MMR.
 ```{r}
 library(tidyverse)
 library(broom)
@@ -696,10 +849,9 @@ scoreAnnot <- scoreAnnot %>%
 
 
 ### OS: Score + covariates
-Considering age and stage as covariate:
-2 grouped scores: "CD8NK_Exh_Bulk" "NK_Exh_Bulk" 
 
-3 groups: "DDR" "MYC_neg"  "NK_Exh_Bulk" "TP53_signaling"
+* Significant signature scores associated with OS when considering 2 groups: CD8NK_Exh_Bulk, NK_Exh_Bulk 
+* Significant signature scores associated with OS when considering 3 groups: DDR, MYC_neg, NK_Exh_Bulk, TP53_signaling"
 
 
 ```{r}
@@ -759,70 +911,40 @@ write.csv(
 ```
 
 
-#### Plot significant scores
+Uncomment the code below to see the survival plots for the significant signatures ("CD8NK_Exh_Bulk" "NK_Exh_Bulk").
 ```{r}
+# 
+# pdf(
+#   paste0(figPath, "OS_Marisa_Score2groups_Cox.pdf"),
+#   height = 4.5,
+#   width = 4.5
+# )
 
-pdf(
-  paste0(figPath, "OS_Marisa_Score2groups_Cox.pdf"),
-  height = 4.5,
-  width = 4.5
-)
+# for (s in unique(cox_OS_Score_2groups_sig$VariableName)) {
+#   print(
+#     survival_plot(
+#       data =
+#         eMar[, rownames(annMarFilt)],
+#       # stratify = "expr",
+#       stratify = "score",
+#       annot = annMarFilt,
+#       scoreCol =  s,
+#       gene = NULL,
+#       covariate = NULL,
+#       isCategoricalCov = TRUE,
+#       timeCol = paste0(sn, ".time"),
+#       eventCol = sn,
+#       nGroup = 2,
+#       confInt = F,
+#       ylabel = paste0(sn),
+#       cols =
+#         rev(brewer.pal(10, "Paired"))
+#     )
+#   )
+# }
 
-for (s in unique(cox_OS_Score_2groups_sig$VariableName)) {
-  print(
-    survival_plot(
-      data =
-        eMar[, rownames(annMarFilt)],
-      # stratify = "expr",
-      stratify = "score",
-      annot = annMarFilt,
-      scoreCol =  s,
-      gene = NULL,
-      covariate = NULL,
-      isCategoricalCov = TRUE,
-      timeCol = paste0(sn, ".time"),
-      eventCol = sn,
-      nGroup = 2,
-      confInt = F,
-      ylabel = paste0(sn),
-      cols =
-        rev(brewer.pal(10, "Paired"))
-    )
-  )
-}
+# dev.off()
 
-dev.off()
-
-pdf(
-  paste0(figPath, "OS_Marisa_Score3groups_Cox.pdf"),
-  height = 4.5,
-  width = 4.5
-)
-
-for (s in unique(cox_OS_Score_3groups_sig$VariableName)) {
-  print(
-    survival_plot(
-      data =
-        eMar[, rownames(annMarFilt)],
-      # stratify = "expr",
-      stratify = "score",
-      annot = annMarFilt,
-      scoreCol =  s,
-      gene = NULL,
-      covariate = NULL,
-      isCategoricalCov = TRUE,
-      timeCol = paste0(sn, ".time"),
-      eventCol = sn,
-      nGroup = 3,
-      confInt = F,
-      ylabel = paste0(sn),
-      cols =
-        rev(brewer.pal(10, "Paired"))
-    )
-  )
-}
-
-dev.off()
 ```
 
 ### OS: Score Pairs + covariate
@@ -844,12 +966,9 @@ exhSigs <- c(
   )
 
 
-# selSigs <- c(trmSigs, exhSigs, TGFbGenes)
-
 exhTGFbCan <- c(exhSigs, canSigs)
 trmTGFbCan <- c(trmSigs, canSigs)
 
-# chi_scorePairs_age_signifClean <- vector()
 wide2Comb <- wide2
 
 for(s in trmSigs){
@@ -914,10 +1033,12 @@ wide2Comb[, "CD4_Exh_Bulk--NK_Exh_Bulk"] <-
 
 
 wide2CombLong <- wide2Comb %>% 
-  pivot_longer(., cols = 156:ncol(wide2Comb), 
+  pivot_longer(., cols = 154:ncol(wide2Comb), 
                values_to = "Comb_2status", names_to = "Comb_Name") %>% 
   data.frame(check.names = F)
   
+
+saveRDS(wide2CombLong, paste0(outPath, "Marisa_Survival_OS_ScoreExpr_wide.RDS"))
 ```
 
 
@@ -941,74 +1062,35 @@ cox_OS_2Comb_sig <- cox_OS_2Comb %>% filter(`Pr(>|z|)` < 0.05) %>%
   data.frame(check.names = F)
 
 
-# write.csv(
-#   cox_OS_2Comb,
-#   paste0(outPath, "Marisa_Cox_OS_2ScorePairs_AllStat2.csv"),
-#   row.names = F
-# )
-# 
-# write.csv(
-#   cox_OS_2Comb_sig,
-#   paste0(outPath, "Marisa_Cox_OS_2ScorePairs_significant2.csv"),
-#   row.names = F
-# )
+write.csv(
+  cox_OS_2Comb,
+  paste0(outPath, "Marisa_Cox_OS_2ScorePairs_AllStat2.csv"),
+  row.names = F
+)
+
+write.csv(
+  cox_OS_2Comb_sig,
+  paste0(outPath, "Marisa_Cox_OS_2ScorePairs_significant2.csv"),
+  row.names = F
+)
 
 ```
 
-
-```{r}
+The below codes generates the K-M curves for the significant score combinations. However, as there are 86 significant score combinations that are significant, we only plot the signature pair that we present in the paper (CD8NK_Exh_Bulk--TGFb_Signaling). You could use the variable `sigPairs` instead of `sigPairInpaper` to see the KM curves for all of the significant signatures. 
+The reported p-values in the below figures are log-rank p-values, and while the p-values from the multivariate Cox prop hazard models are significant for all these signature pairs, the log-rank may not be significant. One of these figures reproduces Figure 6C, right plot. 
+```{r, fig.height = 5.2, fig.width = 4.6}
 covarInfo <- paste(covarColumns, collapse = " + ")
 sigPairs <- unique(cox_OS_2Comb_sig$VariableName)
 
-pdf(
-  paste0(figPath, "OS_Marisa_2ScorePairs_Cox_CorrectedCurves.pdf"),
-  height = 4,
-  width = 8
+sigPairInpaper <- c(
+  "CD8NK_Exh_Bulk--TGFb_Signaling"
 )
-
-for(cc in sigPairs){
-  
-  variableCol <- "Comb_2status"
-  ggSurv <- wide2CombLong[wide2CombLong$Comb_Name == cc,]
-  currentCoxFit <-  coxph(as.formula(
-    paste(
-      'Surv(',
-      timeCol,
-      ', ',
-      eventCol,
-      ')~',
-      variableCol,
-      ' + ',
-      covarInfo
-    )
-  )
-  ,
-  data = ggSurv)
-
-  
-    print(
-    survminer::ggadjustedcurves(
-      currentCoxFit,
-      method = "average",
-      variable = "Comb_2status",
-      data = ggSurv, 
-      palette = rev(brewer.pal(10, "Paired")), 
-      title = cc, 
-      legend = "right"
-    ) 
-  )
-  
-}
-
-dev.off()  
-
-
-pdf(
-  paste0(figPath, "OS_Marisa_2ScorePairs_Cox_paper.pdf"),
-  height = 5.2,
-  width = 4.6
-)
-for(cc in sigPairs){
+# pdf(
+#   paste0(figPath, "OS_Marisa_2ScorePairs_Cox_paper.pdf"),
+#   height = 5.2,
+#   width = 4.6
+# )
+for(cc in sigPairInpaper){
   
   sc1 <- unlist(strsplit(cc, "--"))[1]
   sc2 <- unlist(strsplit(cc, "--"))[2]
@@ -1032,81 +1114,23 @@ for(cc in sigPairs){
                           cols = 
                             (brewer.pal(8, "Dark2"))))
 }
-dev.off()
-
-
-
-# 
-# pdf(
-#   paste0(figPath, "OS_Marisa_2ScorePairs_Cox_AllScorePairs.pdf"),
-#   height = 5.6,
-#   width = 5.3
-# )
-# # for(cc in unique(cox_OS_2Comb_AgeStage$VariableName)){
-# for(cc in unique(cox_OS_2Comb$VariableName)){
-#   
-#   sc1 <- unlist(strsplit(cc, "--"))[1]
-#   sc2 <- unlist(strsplit(cc, "--"))[2]
-#   
-#    print(survival_plot(data = 
-#                          eMar[, rownames(annMarFilt)],
-#                           # stratify = "score_score",
-#                           stratify = "score_score",
-#                           annot = annMarFilt,
-#                           # annot = currentAnnotExprCleanFilt,
-#                           # scoreCol = cc,
-#                           scoreCol = c(sc1, sc2),
-#                           gene = NULL,
-#                           covariate = NULL,
-#                           isCategoricalCov = NULL,
-#                           timeCol = paste0(sn, ".time"),
-#                           eventCol = sn,
-#                           nGroup = 2,
-#                           confInt = F, 
-#                           ylabel = sn,
-#                           cols = 
-#                             (brewer.pal(8, "Dark2"))))
-# }
 # dev.off()
+
 ```
-
-### CoefPlot
-```{r}
-dd <- cox_OS_2Comb_sig[, c("VariableName",
-                                    "variable",
-                                    "exp(coef)",
-                                    "lower .95",
-                                    "upper .95",
-                                    "z",
-                                    "Pr(>|z|)")]
-
-colnames(dd) <-
-  c("VariableName", "term", "estimate", "conf.low", "conf.high", "z", "p-value")
-
-# dd <- dd[! duplicated(dd$term),]
-dd <- dd[order(dd$estimate), ]
-
-  # geom_vline(xintercept = 1, lty = 2, size = 1, color = "darkblue") +
-  # geom_vline(xintercept = 0, size = 1)
-
-
-pdf(paste0(figPath, "OS_Marisa_ScorePairs_CoefPlot.pdf"),
-    height = 14,
-    width = 8)
-ggstatsplot::ggcoefstats(
-  x = dd,
-  output = "plot",
-  statistic = "z",
-  exponentiate = T
-)
-dev.off()
-```
-
 
 
 ### ScorePairs extremes
-Get only top left and bottom right of teh scattreplot
+We run the Cox model only on samples from the top left and bottom right of the scattreplots of Res_Bulk vs Exh_Bulk scores; i.e. we compare samples with high Res and low Exh to those with low Res and high Exh scores. Significant associations are from the below combinations of signatures:
 
+* "CD8_Res_Bulk--CD8_Exh_Bulk"
+* "CD4_Res_Bulk--NK_Exh_Bulk" 
+* "CD8_Exh_Bulk--NK_Res_Bulk" 
+* "CD8_Exh_Bulk--CD4_Exh_Bulk"
+* "CD8_Res_Bulk--NK_Exh_Bulk" 
+* "CD4_Exh_Bulk--NK_Exh_Bulk" 
+* "NK_Res_Bulk--NK_Exh_Bulk"
+
+One of the survival plots generated here, reproduces Figure 8B, right panel.
 ```{r}
 
 wide2CombLongMar <- wide2CombLong
@@ -1180,17 +1204,11 @@ cox_OS_2Comb_Extremes_sigMar <- cox_OS_2Comb_ExtremesMar %>% filter(`Pr(>|z|)` <
   data.frame(check.names = F)
 
 
-##----- 0.05:
-# [1] "CD8_Trm_Bulk--CD8_Exh_Bulk" "CD4_Trm_Bulk--NK_Exh_Bulk" 
-# [3] "CD8_Exh_Bulk--NK_Trm_Bulk"  "CD8_Exh_Bulk--CD4_Exh_Bulk"
-# [5] "CD8_Trm_Bulk--NK_Exh_Bulk"  "NK_Trm_Bulk--NK_Exh_Bulk" 
-
-
-pdf(
-  paste0(figPath, "OS_Marisa_ExtremeScorePairs_Cox.pdf"),
-  height = 5.8,
-  width = 6
-)
+# pdf(
+#   paste0(figPath, "OS_Marisa_ExtremeScorePairs_Cox.pdf"),
+#   height = 5.8,
+#   width = 6
+# )
 
 for (cc in cox_OS_2Comb_Extremes_sigMar$VariableName) {
   annot <-
@@ -1235,44 +1253,21 @@ for (cc in cox_OS_2Comb_Extremes_sigMar$VariableName) {
   ))
 
 }
-dev.off()
+# dev.off()
 
+write.csv(cox_OS_2Comb_Extremes_sigMar, 
+          paste0(outPath, "Marisa_Cox_OS_ExtremeScorePairs_significant.csv"), 
+          row.names = F)
 ```
 
-
-## Save data list
-```{r}
-
-dListMar <- list(
-  eMar = eMar,
-  annMar = annMar,
-  eMarFilt = eMarFilt,
-  scoreAnnot = scoreAnnot,
-  # exprAnnot = exprAnnot,
-  annMarFilt = annMarFilt,
-  wide2 = wide2,
-  wide3 = wide3,
-  wide2Comb = wide2Comb,
-  wide2CombLong = wide2CombLong
-  # wide2CombExpr = wide2CombExpr,
-  # wide2CombExprLong = wide2CombExprLong
-)
-
-
-saveRDS(dListMar, paste0(outPath, "Marisa_SurvivalScoreExpr_DataFormatList_short_20201214.RDS"))
-
-# dListMar <- readRDS( "../output/Microarray/Marisa_SurvivalScoreExpr_DataFormatList_short_20201214.RDS")
-
-```
            
- 
-
 
 
 # RFS
 
-559 samples
 ```{r}
+
+# 559 samples
 library(survival)
 timeCol = "RFS.time"
 eventCol = "RFS"
@@ -1284,8 +1279,7 @@ annMarFilt$MMR[annMarFilt$MMR == "N/A"] <- NA
 ```
  
  
-Remove samples that have time = 0; these are mostly stage IV samples that have recurrence (event = 1) and few stage II and III samples that have or do not have recurrence. In total 38 samples.
-This time we keep the rest of the stage 4 samples in (30).
+Remove samples that have time = 0; these are mostly stage IV samples that have recurrence (event = 1) and few stage II and III samples that have or do not have recurrence. In total 38 samples. We keep the rest of the stage 4 samples (30).
 ```{r}
 # annMarFilt[(annMarFilt$RFS == 1 &
 #                   annMarFilt$RFS.time == 0), 
@@ -1299,8 +1293,7 @@ annMarFilt <- annMarFilt[
 ```
 
 ## Lasso for Cox to choose covariates
-In order to decide which of the clinical factors to include, we need to perform lasso on the Cox models. We then use the coef of the lambda.min to decide which ones to include or exclude from the model. 
-Based on the results below, we need to include all 4 variables.
+In order to decide which of the clinical factors to include, we need to perform lasso on the Cox models. We then use the coef of the lambda.min to decide which ones to include or exclude from the model. Based on the results below, we need to include all 4 variables.
 ```{r}
 library(tidyverse)
 library(broom)
@@ -1347,15 +1340,6 @@ plot(cv.fit)
 
 
 coef(cv.fit, s = "lambda.min")
-
-
-coxph(Surv(as.numeric(annMarFilt_Sel[, timeCol]), as.numeric(annMarFilt_Sel[, eventCol])) ~
-        Age + Stage + MMR + CMS,
-      data = annMarFilt_Sel)
-
-coxph(Surv(as.numeric(annMarFilt_Sel[, timeCol]), as.numeric(annMarFilt_Sel[, eventCol])) ~
-        Age + Stage + CMS,
-      data = annMarFilt_Sel)
 
 ```
 
@@ -1421,16 +1405,12 @@ scoreAnnot <- scoreAnnot %>%
   ) %>%
   data.frame()
 
-
 ```
 
 
-
 ### RFS: Score + covariates
-2 grouped scores: "Epi_Thiery"  "HPX_EGF_EMT" "Peroxisome"  "TP53_signaling"
-
-3 groups: "HPX_EGF_EMT"  "Hypoxia"   "Hypoxia20"     
- "Peroxisome"  "TP53_signaling"
+* Significant signature scores associated with PFI when considering 2 groups: "Epi_Thiery"  "HPX_EGF_EMT" "Peroxisome"  "TP53_signaling"
+* Significant signature scores associated with PFI when considering 3 groups:"HPX_EGF_EMT"  "Hypoxia"   "Hypoxia20"  "Peroxisome"  "TP53_signaling"
 
 
 ```{r}
@@ -1488,74 +1468,6 @@ write.csv(
 )
 
 ```
-
-
-#### Plot significant scores
-```{r}
-
-pdf(
-  paste0(figPath, "RFS_Marisa_Score2groups_Cox.pdf"),
-  height = 4.5,
-  width = 4.5
-)
-
-for (s in unique(cox_RFS_Score_2groups_sig$VariableName)) {
-  print(
-    survival_plot(
-      data =
-        eMar[, rownames(annMarFilt)],
-      # stratify = "expr",
-      stratify = "score",
-      annot = annMarFilt,
-      scoreCol =  s,
-      gene = NULL,
-      covariate = NULL,
-      isCategoricalCov = TRUE,
-      timeCol = paste0(sn, ".time"),
-      eventCol = sn,
-      nGroup = 2,
-      confInt = F,
-      ylabel = paste0(sn),
-      cols =
-        rev(brewer.pal(10, "Paired"))
-    )
-  )
-}
-
-dev.off()
-
-pdf(
-  paste0(figPath, "RFS_Marisa_Score3groups_Cox.pdf"),
-  height = 4.5,
-  width = 4.5
-)
-
-for (s in unique(cox_RFS_Score_3groups_sig$VariableName)) {
-  print(
-    survival_plot(
-      data =
-        eMar[, rownames(annMarFilt)],
-      # stratify = "expr",
-      stratify = "score",
-      annot = annMarFilt,
-      scoreCol =  s,
-      gene = NULL,
-      covariate = NULL,
-      isCategoricalCov = TRUE,
-      timeCol = paste0(sn, ".time"),
-      eventCol = sn,
-      nGroup = 3,
-      confInt = F,
-      ylabel = paste0(sn),
-      cols =
-        rev(brewer.pal(10, "Paired"))
-    )
-  )
-}
-
-dev.off()
-```
-
 
 
 ### RFS: Score Pairs + covariate
@@ -1643,15 +1555,14 @@ wide2Comb[, "CD4_Exh_Bulk--NK_Exh_Bulk"] <-
 
 
 wide2CombLong <- wide2Comb %>% 
-  pivot_longer(., cols = 156:ncol(wide2Comb), 
+  pivot_longer(., cols = 154:ncol(wide2Comb), 
                values_to = "Comb_2status", names_to = "Comb_Name") %>% 
   data.frame(check.names = F)
-  
+ 
+saveRDS(wide2CombLong, paste0(outPath, "Marisa_Survival_RFS_ScoreExpr_wide.RDS")) 
 ```
 
-
-
-
+64 significant variables
 ```{r}
 cox_RFS_2Comb <-
   coxph_multitest(
@@ -1670,100 +1581,22 @@ cox_RFS_2Comb_sig <- cox_RFS_2Comb %>% filter(`Pr(>|z|)` < 0.05) %>%
   data.frame(check.names = F)
 
 
-# write.csv(
-#   cox_RFS_2Comb,
-#   paste0(outPath, "Marisa_Cox_RFS_2ScorePairs_AllStat.csv"),
-#   row.names = F
-# )
-# 
-# write.csv(
-#   cox_RFS_2Comb_sig,
-#   paste0(outPath, "Marisa_Cox_RFS_2ScorePairs_significant.csv"),
-#   row.names = F
-# )
+write.csv(
+  cox_RFS_2Comb,
+  paste0(outPath, "Marisa_Cox_RFS_2ScorePairs_AllStat.csv"),
+  row.names = F
+)
+
+write.csv(
+  cox_RFS_2Comb_sig,
+  paste0(outPath, "Marisa_Cox_RFS_2ScorePairs_significant.csv"),
+  row.names = F
+)
 
 ```
 
-
 ```{r}
-
-sigPairs <- unique(cox_RFS_2Comb_sig$VariableName)
-
-pdf(
-  paste0(figPath, "RFS_Marisa_2ScorePairs_Cox_CorrectedCurves.pdf"),
-  height = 4,
-  width = 8
-)
-
-for(cc in sigPairs){
-  
-  variableCol <- "Comb_2status"
-  ggSurv <- wide2CombLong[wide2CombLong$Comb_Name == cc,]
-  currentCoxFit <-  coxph(as.formula(
-    paste(
-      'Surv(',
-      timeCol,
-      ', ',
-      eventCol,
-      ')~',
-      variableCol,
-      ' + ',
-      covarInfo
-    )
-  )
-  ,
-  data = ggSurv)
-
-  
-    print(
-    survminer::ggadjustedcurves(
-      currentCoxFit,
-      method = "average",
-      variable = "Comb_2status",
-      data = ggSurv, 
-      palette = rev(brewer.pal(10, "Paired")), 
-      title = cc, 
-      legend = "right"
-    ) 
-  )
-  
-}
-
-dev.off()  
-
-
-pdf(
-  paste0(figPath, "RFS_Marisa_2ScorePairs_Cox_paper.pdf"),
-  height = 5.2,
-  width = 4.6
-)
-for(cc in sigPairs){
-  
-  sc1 <- unlist(strsplit(cc, "--"))[1]
-  sc2 <- unlist(strsplit(cc, "--"))[2]
-  
-   print(survival_plot(data = 
-                         eMar[, rownames(annMarFilt)],
-                          # stratify = "score_score",
-                          stratify = "score_score",
-                          annot = annMarFilt,
-                          # annot = currentAnnotExprCleanFilt,
-                          # scoreCol = cc,
-                          scoreCol = c(sc1, sc2),
-                          gene = NULL,
-                          covariate = NULL,
-                          isCategoricalCov = NULL,
-                          timeCol = paste0(sn, ".time"),
-                          eventCol = sn,
-                          nGroup = 2,
-                          confInt = F, 
-                          ylabel = sn,
-                          cols = 
-                            (brewer.pal(8, "Dark2"))))
-}
-dev.off()
-
-
+# sigPairs <- unique(cox_RFS_2Comb_sig$VariableName)
 # 
 # pdf(
 #   paste0(figPath, "RFS_Marisa_2ScorePairs_Cox_AllScorePairs.pdf"),
@@ -1797,38 +1630,9 @@ dev.off()
 # dev.off()
 ```
 
-### CoefPlot
-```{r}
-dd <- cox_RFS_2Comb_sig[, c("VariableName",
-                                    "variable",
-                                    "exp(coef)",
-                                    "lower .95",
-                                    "upper .95",
-                                    "z",
-                                    "Pr(>|z|)")]
-
-colnames(dd) <-
-  c("VariableName", "term", "estimate", "conf.low", "conf.high", "z", "p-value")
-
-dd <- dd[order(dd$estimate), ]
-
-pdf(paste0(figPath, "RFS_Marisa_ScorePairs_CoefPlot.pdf"),
-    height = 10,
-    width = 6.5)
-ggstatsplot::ggcoefstats(
-  x = dd,
-  output = "plot",
-  statistic = "z",
-  exponentiate = T
-)
-dev.off()
-```
-
-
 
 ### ScorePairs extremes
-Get only top left and bottom right of the scattreplot
-
+We reproduce Figure 8C, right panel. 
 ```{r}
 wide2CombLongMar <- wide2CombLong
 selComb <- c(
@@ -1905,11 +1709,11 @@ cox_RFS_2Comb_Extremes_sigMar <- cox_RFS_2Comb_ExtremesMar %>% filter(`Pr(>|z|)`
 # "CD8_Exh_Bulk--NK_Trm_Bulk"
 #  "NK_Trm_Bulk--NK_Exh_Bulk" 
 
-pdf(
-  paste0(figPath, "RFS_Marisa_ExtremeScorePairs_Cox.pdf"),
-  height = 5.8,
-  width = 6
-)
+# pdf(
+#   paste0(figPath, "RFS_Marisa_ExtremeScorePairs_Cox.pdf"),
+#   height = 5.8,
+#   width = 6
+# )
 
 for (cc in cox_RFS_2Comb_Extremes_sigMar$VariableName) {
   annot <-
@@ -1955,59 +1759,21 @@ for (cc in cox_RFS_2Comb_Extremes_sigMar$VariableName) {
   ))
 
 }
-dev.off()
+# dev.off()
 
+write.csv(cox_RFS_2Comb_Extremes_sigMar, 
+          paste0(outPath, "Marisa_Cox_RFS_ExtremeScorePairs_significant.csv"), 
+          row.names = F)
 ```
 
-
-## Save data list
-```{r}
-
-dListMar_RFS <- list(
-  eMar = eMar,
-  annMar = annMar,
-  eMarFilt = eMarFilt,
-  scoreAnnot = scoreAnnot,
-  # exprAnnot = exprAnnot,
-  annMarFilt = annMarFilt,
-  wide2 = wide2,
-  wide3 = wide3,
-  wide2Comb = wide2Comb,
-  wide2CombLong = wide2CombLong
-  # wide2CombExpr = wide2CombExpr,
-  # wide2CombExprLong = wide2CombExprLong
-)
-
-
-saveRDS(dListMar_RFS, paste0(outPath, "Marisa_SurvivalRFS_ScoreExpr_DataFormatList_short_20201214.RDS"))
-
-# dListMar <- readRDS( "../output/Microarray/Marisa_SurvivalRFS_ScoreExpr_DataFormatList_short_20201214.RDS")
-
-```
-          
-          
-          
-        
+     
 # Mutation
-```{r}
-
-##---- if plotting ExhTrmScores
-# annMarLong2 <- annMarLong %>%
-#   pivot_longer(cols = c(BRAF, KRAS, TP53), values_to = "Mut", names_to = "Genes") %>%
-#   filter(Signature %in% c(imSigs, canSigs))
+There are mutation info available for the BRAF, KRAS, and TP53 in Marisa et al data; here we generate boxplots of Res/Exh scores stratified by mutation status.
+```{r, fig.height = 7.5, fig.width = 13}
 
 annMarLong2 <- annMarLong %>%
   pivot_longer(cols = c(BRAF, TP53, KRAS), values_to = "Mut", names_to = "Genes") %>%
-  # filter(Signature %in% c("All_Exh", "All_Trm"))
   filter(grepl("Bulk", Signature))
-
-
-##---- if plotting Cancer scores
-# annMarLong2 <- annMarLong %>% 
-#   pivot_longer(cols = c(BRAF, KRAS, TP53), values_to = "Mut", names_to = "Genes") %>% 
-#   filter(Signature %in% canSigs)
-
-##--------
 
 annMarLong2$Gene_Signature <- paste(annMarLong2$Genes, annMarLong2$Signature, sep = "_")
 
@@ -2028,7 +1794,6 @@ for(i in 1:length(currentcombs)) {
   ylab <- unique(currentAnnMarLong2$Signature)
   currentGene <- as.character(unique(currentAnnMarLong2$Genes))
   title <- currentGene
-    # paste0(currentGene,"\n(p < 0.01)")
   
   p[[g]] <- currentAnnMarLong2 %>%
     filter(Sample_Type == "Cancer" &
@@ -2039,12 +1804,8 @@ for(i in 1:length(currentcombs)) {
     ylab(ylab) +
   geom_signif(comparisons = list(c("Mut", "WT")),
               map_signif_level = TRUE, tip_length = 0, vjust= 1.4) +
-    # geom_line(mapping = aes(y = .fitted), color = "blue") +
     ggtitle(title) +
-    # scale_color_manual(values=c("#999999", "#E69F00")) +
     scale_color_manual(values = brewer.pal(4, "Dark2")[c(1, 3)]) +
-    # scale_x_discrete(breaks = c("WT", "Mut"),
-    #                  labels = c("WT", "Mut")) +
     scale_y_continuous(
       breaks = equal_breaks(n = nBreak, s = scalingFactor),
       expand = c(scalingFactor, 0)
@@ -2057,21 +1818,25 @@ for(i in 1:length(currentcombs)) {
 
 library(gridExtra)
 p <- p[currentcombs]
-# pdf(paste0(figPath, "Boxplot_Marisa_Muts_CancerScores_sigs2.pdf"), height = 15, width = 13)
-pdf(paste0(figPath, "Boxplot_Marisa_Muts_ScoresAllExhTrm_3Genes.pdf"), height = 7.5, width = 13)
-# do.call(grid.arrange, p)
+
+# pdf(paste0(figPath, "Boxplot_Marisa_Muts_ScoresAllExhTrm_3Genes.pdf"), height = 7.5, width = 13)
 grid.arrange(
   grobs = p,
   ncol = 10
-  # widths = c(1, 1, 1),
-  # layout_matrix = rbind(c(1, 2, 3))
 )
-dev.off()
+# dev.off()
 
 ```
 
-  
-          
+      
+# Session information
+Here are the list of tools and packages (along with their versions) used in this document. 
+```{r}
+sessionInfo()
+```
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 598px;"></div>
+    
           
           
           
