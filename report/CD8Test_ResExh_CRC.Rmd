@@ -488,7 +488,7 @@ FeaturePlot(CD8ExhRes_10x,
 
 
 # de Vries data
-The raw data (matrix, genes, barcodes) and cell annotations were received from the authors of the de Vries et al paper, and then we generated a Seurat object for that. Here we read the Seurat object (33694 features across 1079 cells). 
+The raw data (matrix, genes, barcodes) and cell annotations were received from the authors of the [de Vries et al paper](https://pubmed.ncbi.nlm.nih.gov/31270164/), and then we generated a Seurat object. Here we read the Seurat object (33694 features across 1079 cells). 
 ```{r}
 # vries <- Read10X(data.dir = devriesPath)
 # vv0 <- CreateSeuratObject(vries)
