@@ -56,7 +56,7 @@ opts_knit$set(width = 65)
 # Set up
 
 # Set up an overview
-This document contains the codes used to generate some of the results in the [Foroutan et al](https://www.biorxiv.org/content/10.1101/2020.12.19.423379v1) paper. In this document, we test the Res and Exh signatures that we obtained by analysing the CD8 single cell data from Zhang et al (SMart-seq2) in multiple independent single cell data sets. These include the CRC infiltrated CD8 T cells from Zhang et al 10X data and de Vries et al data, as well as the normal gut infiltrated CD8 T cells from James et al data.
+This document contains the codes used to generate some of the results in the [Foroutan et al](https://www.biorxiv.org/content/10.1101/2020.12.19.423379v1) manuscript. In this document, we test the Res and Exh signatures that we obtained by analysing the CD4 single cell data from [Zhang et al (Smart-seq2)](https://pubmed.ncbi.nlm.nih.gov/32302573/) in multiple independent single cell data sets. These include the CRC infiltrated CD4 T cells from [Zhang et al 10X data](https://pubmed.ncbi.nlm.nih.gov/32302573/) and [de Vries et al data](https://pubmed.ncbi.nlm.nih.gov/31270164/), as well as the normal gut infiltrated CD4 T cells from [James et al data](https://www.nature.com/articles/s41590-020-0602-z).
 
 ```{r, warning=F, message=F}
 
@@ -755,7 +755,7 @@ FeaturePlot(
 ```
 
 # James' gut atlas
-We downloaded the data rfom Human Gut Atlas by James et al, and generated the Seurat object (see the commnented code below) which includes the data for NK and T cells only. Here we read the Seurat object, and subset to CD4 T cells.
+We downloaded the data rfom Human Gut Atlas by [James et al](https://www.nature.com/articles/s41590-020-0602-z), and generated the Seurat object (see the commnented code below) which includes the data for NK and T cells only. Here we read the Seurat object, and subset to CD4 T cells.
 
 In this data, we need to deal with the variation across patients, as there is a clear donor impact in the data.
 ```{r}

@@ -121,9 +121,11 @@ names(AllSigsCollection)
 ```
 
 # Corrected TCGA
-We have already made an annotation file for the TCGA COAD by combining several annotation data from different sources to include as much info as possible for the samples. We have also corrected the TCGA COAD data using the RUV-III method as suggested by [Molania et al](https://academic.oup.com/nar/article/47/12/6073/5494770?login=true). Here we read the data and annotation, and subset to the common samples.
+We have made an annotation file for the TCGA COAD by combining several annotation data from different sources to include as much info as possible for the samples; these include the [survival data from GDC](https://gdc.cancer.gov/about-data/publications/pancanatlas), the annotation file for the COAD downloaded using the TCGAbiolink package, as well as several columns associated with batch information.
+
+We have also corrected the TCGA COAD data using the RUV-III method as suggested by [Molania et al](https://academic.oup.com/nar/article/47/12/6073/5494770?login=true). Here we read the data and annotation, and subset to the common samples.
 ```{r}
-annot_merged <- readRDS(paste0(tcgaPath, "DontPush/Annotation_COAD_Merged_InclNormal.RDS"))
+annot_merged <- readRDS(paste0(tcgaPath, "Annotation_COAD_Merged_InclNormal.RDS"))
 currentAnnot_ruv <- annot_merged
 ```
 

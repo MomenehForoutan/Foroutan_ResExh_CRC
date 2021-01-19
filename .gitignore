@@ -3,12 +3,6 @@
 .RData
 .Ruserdata
 
-*.Rproj
-*.DS_Store
-output/*.DS_Store
-
-
-
 figure/
 script/ReadSignatures.R
 script/ReadSignatures_initial.R
@@ -20,7 +14,7 @@ data/deVries/
 data/GSE146771/
 data/James_GutAtlas/
 data/GSE146771_Zhang_CRC/
-data/TCGA/
+data/TCGA/DontPush/
 data/Marisa/DontPush/
 
 output/CD4/DontPush/
@@ -48,3 +42,7 @@ report/Compare_Signatures_cache/
 report/Compare_Signatures_files/
 	
 report/*.html
+*.Rproj
+.DS_Store
+output/.DS_Store
+
