@@ -3,9 +3,9 @@
 .RData
 .Ruserdata
 
-.Rproj
-.DS_Store
-output/.DS_Store
+*.Rproj
+*.DS_Store
+output/*.DS_Store
 
 
 
