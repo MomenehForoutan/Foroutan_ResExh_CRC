@@ -657,7 +657,7 @@ tcgaOnlyExtreme <- coxTCGA_pfi_2Comb_Extremes_sig$VariableName[
 ```
 
 ### Extreme scores significant in both data 
-Generate Figure 8C.
+Generate Figure 8C and Suppl Figure 14.
 ```{r}
 
 ##----- look at the extreme scores significant in both TCGA  and Marisa

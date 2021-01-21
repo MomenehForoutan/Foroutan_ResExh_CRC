@@ -382,6 +382,8 @@ annTCGALong_ruv %>%
 
 ### Scatterplots of score pairs
 Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. The first bit of code generates many scatterplots comparing each signature with all other signatures; you could uncomment this section and export that in a PDF file to avoid overloading the html file. Here, we have commented the first section and only generate the scatterplots presented in the paper.
+
+We also generate a heatmap of the correlation values between Res/Exh scores and several selected signature scores. 
 ```{r}
 
 cmsCol <- c(
@@ -446,6 +448,63 @@ cmsCol <- c(
 #   }
 # }
 # 
+# dev.off()
+
+
+corData <- data.frame(matrix(nrow = 10, ncol = 0))
+rownames(corData) <- imSigs
+
+selCanSigs <-
+  c(
+    "TGFb_Signaling",
+    "TGFbEMT",
+    "HPX_EGF_EMT",
+    "OXPHOS",
+    "DDR",
+    "DNA_Repair",
+    "TP53_pos",
+    "TP53_neg"
+  )
+
+for(se in selCanSigs) {
+  corValues <- vector()
+  for (im in imSigs) {
+    d <- currentAnnot_ruv %>%
+      mutate(MSI = MSI_TCGAbiolink_annot) %>%
+      filter(!MSI  %in% "Indeterminate") %>%
+      filter(!CMS  %in% "N")
+    
+    corVal <- round(cor.test(d[, im], d[, se])[[4]], 2)
+    names(corVal) <- im
+    corValues <- c(corValues, corVal)
+    dd <- data.frame(corValues)
+  }
+  
+  corData <- cbind(corData, dd)
+}
+
+colnames(corData) <- selCanSigs
+
+library(circlize)
+library(grid)
+
+# png(
+#   paste0(figPath, "Correlation_ResExh_TGFbSignaling.png"),
+#   height = 6,
+#   width = 6.5,
+#   res = 400,
+#   units = "in"
+# )
+ComplexHeatmap::Heatmap(
+  corData,
+  cluster_columns = T,
+  cluster_rows = F,
+  col = viridis::cividis(100),
+  column_title = "Correlation of Res and Exh scores with \ndifferent signature scores in TCGA COAD data",
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf("%.2f", corData[i, j]), x, y, gp = gpar(fontsize = 10))
+  }, show_heatmap_legend = T, name = "Pearson's\ncorrelation\ncoefficient\n"
+)
 # dev.off()
 
 ```
@@ -1398,6 +1457,40 @@ cox_PFI_Score_3groups_sig$VariableName
 # )
 ```
 
+Plot survival for the significant score (NK_Res_Bulk and TGFb signaling) - related to Suppl Figure 13.
+```{r}
+
+# pdf(
+#   paste0(figPath, "PFI_TCGA_Score2groups_Cox.pdf"),
+#   height = 4,
+#   width = 3.5
+# )
+
+for (s in unique(cox_PFI_Score_2groups_sig$VariableName)) {
+  print(
+    survival_plot(
+      data =
+        ruvTCGA_tum[, rownames(annFilt)],
+      # stratify = "expr",
+      stratify = "score",
+      annot = annFilt,
+      scoreCol =  s,
+      gene = NULL,
+      covariate = NULL,
+      isCategoricalCov = TRUE,
+      timeCol = paste0(sn, ".time"),
+      eventCol = sn,
+      nGroup = 2,
+      confInt = F,
+      ylabel = paste0(sn),
+      cols =
+        rev(brewer.pal(10, "Paired"))
+    )
+  )
+}
+
+# dev.off()
+```
 
 ### PFI: Score Pairs + covariates
 ```{r}

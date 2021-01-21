@@ -390,11 +390,11 @@ annMarFilt <- data.frame(annMarFilt,
 ## Scores vs Annotation
 ### Define Cancer and Immune signatures
 ```{r}
-canSigs <- scoreNames[! grepl("Res", scoreNames) &
-                        ! grepl("Exh", scoreNames)]
+canSigs <- scoreNames[! grepl("Res_", scoreNames) &
+                        ! grepl("Exh_", scoreNames)]
 
-imSigs <- scoreNames[grepl("Res", scoreNames) |
-                        grepl("Exh", scoreNames)]
+imSigs <- scoreNames[grepl("Res_", scoreNames) |
+                        grepl("Exh_", scoreNames)]
  
 ```
 
@@ -585,6 +585,63 @@ cmsCol <- c(
 # }
 # 
 # dev.off()
+
+
+corData <- data.frame(matrix(nrow = 10, ncol = 0))
+rownames(corData) <- imSigs
+
+selCanSigs <-
+  c(
+    "TGFb_Signaling",
+    "TGFbEMT",
+    "HPX_EGF_EMT",
+    "OXPHOS",
+    "DDR",
+    "DNA_Repair",
+    "TP53_pos",
+    "TP53_neg"
+  )
+
+for(se in selCanSigs) {
+  corValues <- vector()
+  for (im in imSigs) {
+    d <- annMar %>%
+      filter(! annMar$Sample_Type  %in%  "Normal")
+    
+    corVal <- round(cor.test(d[, im], d[, se])[[4]], 2)
+    names(corVal) <- im
+    corValues <- c(corValues, corVal)
+    dd <- data.frame(corValues)
+  }
+  
+  corData <- cbind(corData, dd)
+}
+
+
+colnames(corData) <- selCanSigs
+
+library(circlize)
+library(grid)
+
+
+png(
+  paste0(figPath, "Correlation_ResExh_TGFbSignaling_Marisa.png"),
+  height = 6,
+  width = 6.5,
+  res = 400,
+  units = "in"
+)
+ComplexHeatmap::Heatmap(
+  corData,
+  cluster_columns = T,
+  cluster_rows = F,
+  col = viridis::cividis(100),
+  column_title = "Correlation of Res and Exh scores with \ndifferent signature scores in Marisa data",
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf("%.2f", corData[i, j]), x, y, gp = gpar(fontsize = 10))
+  }, show_heatmap_legend = T, name = "Pearson's\ncorrelation\ncoefficient\n"
+)
+dev.off()
 
 ```
 
@@ -911,38 +968,36 @@ write.csv(
 ```
 
 
-Uncomment the code below to see the survival plots for the significant signatures ("CD8NK_Exh_Bulk" "NK_Exh_Bulk").
+Generate the survival plots for the significant signatures ("CD8NK_Exh_Bulk" "NK_Exh_Bulk") - related to Suppl Figure 13.
 ```{r}
-# 
+ 
 # pdf(
 #   paste0(figPath, "OS_Marisa_Score2groups_Cox.pdf"),
-#   height = 4.5,
-#   width = 4.5
+#   height = 4,
+#   width = 3.5
 # )
-
-# for (s in unique(cox_OS_Score_2groups_sig$VariableName)) {
-#   print(
-#     survival_plot(
-#       data =
-#         eMar[, rownames(annMarFilt)],
-#       # stratify = "expr",
-#       stratify = "score",
-#       annot = annMarFilt,
-#       scoreCol =  s,
-#       gene = NULL,
-#       covariate = NULL,
-#       isCategoricalCov = TRUE,
-#       timeCol = paste0(sn, ".time"),
-#       eventCol = sn,
-#       nGroup = 2,
-#       confInt = F,
-#       ylabel = paste0(sn),
-#       cols =
-#         rev(brewer.pal(10, "Paired"))
-#     )
-#   )
-# }
-
+for (s in unique(cox_OS_Score_2groups_sig$VariableName)) {
+  print(
+    survival_plot(
+      data =
+        eMar[, rownames(annMarFilt)],
+      # stratify = "expr",
+      stratify = "score",
+      annot = annMarFilt,
+      scoreCol =  s,
+      gene = NULL,
+      covariate = NULL,
+      isCategoricalCov = TRUE,
+      timeCol = paste0(sn, ".time"),
+      eventCol = sn,
+      nGroup = 2,
+      confInt = F,
+      ylabel = paste0(sn),
+      cols =
+        rev(brewer.pal(10, "Paired"))
+    )
+  )
+}
 # dev.off()
 
 ```
