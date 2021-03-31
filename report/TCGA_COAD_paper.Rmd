@@ -295,6 +295,7 @@ cmsCol <- c(
 
 
 # pdf(paste0(figPath, "TCGA_Boxplot_Scores_CMS_Bulk.pdf"), height = 6, width = 5.5)
+library(ggpubr)
 
 annTCGALong_ruv %>%
   filter(complete.cases(CMS)) %>%
@@ -306,6 +307,8 @@ annTCGALong_ruv %>%
   scale_y_continuous(breaks = equal_breaks(n = nBreak, s = scalingFactor),
                      expand = c(scalingFactor, 0)) +
   scale_color_manual(values = cmsCol) +
+  # stat_compare_means(comparisons = my_comparisons) + # Add pairwise comparisons p-value
+  stat_compare_means(label.y = 0.85) +     # Add global p-value
   currentTheme +
   theme(
     axis.text.x = element_blank(),
@@ -380,8 +383,68 @@ annTCGALong_ruv %>%
 ```
 
 
+#### p-values for the scores vs subtypes
+```{r}
+
+my_comparisons <- list(c("CMS1", "CMS2"), 
+                       c("CMS1", "CMS3"), 
+                       c("CMS1", "CMS4"),
+                       c("CMS1", "N"),
+                       c("CMS2", "CMS3"),
+                       c("CMS2", "CMS4"),
+                       c("CMS2", "N"),
+                       c("CMS3", "CMS4"),
+                       c("CMS3", "N"),
+                       c("CMS4", "N")
+                       )
+
+
+dd <- annTCGALong_ruv %>%
+  filter(complete.cases(CMS)) %>%
+  filter(grepl("Bulk", Signature)) %>%
+  filter(! grepl("CD8NK", Signature) & ! grepl("All", Signature)) %>%
+  dplyr::select(CMS, Signature, Score) %>% 
+  data.frame()
+  
+
+signatureNames <- unique(dd$Signature)
+
+
+ll <- sapply(signatureNames, function(y) {
+  d <- dd %>%
+    filter(Signature == y) %>%
+    data.frame()
+  
+  sapply(my_comparisons, function(x) {
+    comp1 <- x[1]
+    comp2 <- x[2]
+    
+    d <- d %>%
+      filter(CMS == comp1 | CMS == comp2) %>%
+      data.frame()
+    
+    res <-
+      wilcox.test(d$Score[d$CMS == comp1], d$Score[d$CMS == comp2])$p.value
+    return(res)
+    
+  })
+})
+
+row.names(ll) <- sapply(my_comparisons, function(x) paste(x[1], x[2], sep ="_"))
+
+
+## replace non-significant items with NA
+ll[ll > 0.05] <- NA
+
+
+# tiff(paste0(figPath, "CMS_pvals_TCGA.tiff"), height = 3.3, width = 5, units = "in", res = 300)
+ComplexHeatmap::Heatmap(t(ll), col = viridis::viridis(200), name = "p-value\n")
+# dev.off()
+
+```
+
 ### Scatterplots of score pairs
-Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. The first bit of code generates many scatterplots comparing each signature with all other signatures; you could uncomment this section and export that in a PDF file to avoid overloading the html file. Here, we have commented the first section and only generate the scatterplots presented in the paper.
+Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. The first bit of code generates many scatterplots comparin= each signature with all other signatures; you could uncomment this section and export that in a PDF file to avoid overloading the html file. Here, we have commented the first section and only generate the scatterplots presented in the paper.
 
 We also generate a heatmap of the correlation values between Res/Exh scores and several selected signature scores. 
 ```{r}
@@ -668,6 +731,101 @@ annFilt$MSI_TCGAbiolink_annot[annFilt$MSI_TCGAbiolink_annot == "Indeterminate"] 
 
 ```
 
+## Survival plot for clinical factors
+```{r}
+sn <- "OS"
+
+pdf(paste0(figPath, "OS_TCGA_annot.pdf"), height = 5, width = 4.2)
+survival_plot(
+  data =
+    ruvTCGA_tum[, rownames(annFilt)],
+  stratify = "covariate",
+  annot = annFilt,
+  scoreCol = NULL,
+  gene = NULL,
+  covariate = "Stage",
+  isCategoricalCov = TRUE,
+  timeCol = paste0(sn, ".time"),
+  eventCol = sn,
+  nGroup = 4,
+  confInt = F,
+  ylabel = sn,
+  cols =
+    (brewer.pal(8, "Dark2")
+    ))
+
+survival_plot(
+  data =
+    ruvTCGA_tum[, rownames(annFilt)],
+  stratify = "covariate",
+  annot = annFilt,
+  scoreCol = NULL,
+  gene = NULL,
+  covariate = "CMS",
+  isCategoricalCov = TRUE,
+  timeCol = paste0(sn, ".time"),
+  eventCol = sn,
+  nGroup = 4,
+  confInt = F,
+  ylabel = sn,
+  cols =
+    (brewer.pal(8, "Dark2")
+    ))
+
+# annFilt$MSI_Group[annFilt$MSI_TCGAbiolink_annot == "MSI-L"] <- "MSS"
+
+survival_plot(
+  data =
+    ruvTCGA_tum[, rownames(annFilt)],
+  stratify = "covariate",
+  annot = annFilt,
+  scoreCol = NULL,
+  gene = NULL,
+  covariate = "MSI_TCGAbiolink_annot",
+  # covariate = "MSI_Group",
+  isCategoricalCov = TRUE,
+  timeCol = paste0(sn, ".time"),
+  eventCol = sn,
+  nGroup = 4,
+  confInt = F,
+  ylabel = sn,
+  cols =
+    (brewer.pal(8, "Dark2")
+    ))
+dev.off()
+```
+
+## IF including genes
+```{r}
+gg <- c("CD3E", "CD3G", "CD3D", "CD8A", "CD8B")
+
+gg2 <- gg[gg %in% rownames(ruvTCGA_tum)]
+markerExpr <- ruvTCGA_tum[gg2, ]
+
+markerExprData <- data.frame(markerExpr, check.names = F, check.rows = F)
+markerExprData$Group <- c("CD3", "CD3", "CD3", "CD8", "CD8")
+
+markerExprData <-
+  markerExprData %>% 
+  group_by(Group) %>% 
+  summarise_all(mean) %>% 
+  data.frame(check.names = F, check.rows = F)
+
+row.names(markerExprData) <- markerExprData$Group
+markerExprData <- markerExprData[, ! colnames(markerExprData) == "Group"]
+
+markerExprData <- markerExprData[, row.names(annFilt)]
+
+annFiltExpr <-
+  data.frame(annFilt,
+             t(markerExprData),
+             check.names = F,
+             check.rows = F)
+
+annFilt <- annFiltExpr
+```
+
+
 ## Lasso for Cox to select covariates
 In order to decide which of the clinical factors to include, we perform lasso on the Cox models. We then use the coef of the lambda.min to decide which ones to include or exclude from the model. Based on the results below, we decide include all 4 main variables: MSI, CMS, Age and Stage, as they all had non-zero lambda.min.
 ```{r}
@@ -687,6 +845,8 @@ currentAnnot_ruvSel <-
     "OS.time",
     "OS"
   )]
+
+
 currentAnnot_ruvSel$MSI_TCGAbiolink_annot[currentAnnot_ruvSel$MSI_TCGAbiolink_annot == "Indeterminate"] <- NA
 
 currentAnnot_ruvSel <- currentAnnot_ruvSel[complete.cases(currentAnnot_ruvSel) &
@@ -735,7 +895,8 @@ wide2 <- data.frame(
   ## keep annotations and stage and age
   annFilt[, c(1:151)],
   ## add two group scores and genes
-  as.data.frame(sapply(c(scoreNames), function(x) {
+  # as.data.frame(sapply(c(scoreNames), function(x) {
+  as.data.frame(sapply(c(scoreNames, "CD3", "CD8"), function(x) {
   case_when(
     annFilt[, x] >= median(annFilt[, x], na.rm = T) ~ "High",
     annFilt[, x] < median(annFilt[, x], na.rm = T) ~ "Low"
@@ -747,7 +908,8 @@ wide2 <- data.frame(
 wide3 <- data.frame(## keep annotations and stage and age
   annFilt[, c(1:151)],
   ## add two group scores and genes
-  as.data.frame(sapply(c(scoreNames), function(x) {
+  # as.data.frame(sapply(c(scoreNames), function(x) {
+  as.data.frame(sapply(c(scoreNames, "CD3", "CD8"), function(x) {
     case_when(
       annFilt[, x] >= quantile(annFilt[, x], probs = 0.65) ~ "High",
       annFilt[, x] <= quantile(annFilt[, x], probs = 0.35) ~ "Low",
@@ -763,7 +925,8 @@ wide3 <- data.frame(## keep annotations and stage and age
 ```{r}
 
 scoreAnnot <- pivot_longer(annFilt, 
-                           cols = scoreColumns[1]:scoreColumns[length(scoreColumns)], 
+                           # cols = scoreColumns[1]:scoreColumns[length(scoreColumns)], 
+                           cols = scoreColumns[1]:ncol(annFilt), 
                            values_to = "Score",
                            names_to = "Signature") %>% 
   data.frame()
@@ -793,8 +956,428 @@ scoreAnnot <- scoreAnnot %>%
 ```
 
 
+#### Check Stage/CMS/MSI/Scores
+```{r}
+##--------- Cox for stage:
+
+cox_stage <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "Stage",
+  nStrata = 4,
+  returnCovarStat = F,
+  covarCol = c("Age", "CMS", "MSI_TCGAbiolink_annot"),
+  returnCoxModels = F
+)
+
+cox_stage_noCovar <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "Stage",
+  nStrata = 4,
+  returnCovarStat = F,
+  covarCol = NULL,
+  returnCoxModels = F
+)
+
+cox_stage2 <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "Stage_2group",
+  nStrata = 2,
+  returnCovarStat = F,
+  covarCol = c("Age", "CMS", "MSI_TCGAbiolink_annot"),
+  returnCoxModels = F
+)
+ 
+
+
+#-------- Cox for MSI
+
+cox_msi <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "MSI_TCGAbiolink_annot",
+  nStrata = 3,
+  returnCovarStat = F,
+  covarCol = c("Age", "CMS", "Stage"),
+  returnCoxModels = F
+)
+
+cox_msi_noCovar <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "MSI_TCGAbiolink_annot",
+  nStrata = 3,
+  returnCovarStat = F,
+  covarCol = NULL,
+  returnCoxModels = F
+)
+
+##------- Cox for CMS
+
+cox_cms <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "CMS",
+  nStrata = 4,
+  returnCovarStat = F,
+  covarCol = c("Age", "Stage", "MSI_TCGAbiolink_annot"),
+  returnCoxModels = F
+)
+
+cox_cms_noCovar <- coxph_test (
+  data = scoreAnnot,
+  timeCol = timeCol,
+  eventCol = eventCol,
+  # sigCol = "Signature",
+  variableCol = "CMS",
+  nStrata = 4,
+  returnCovarStat = F,
+  covarCol = NULL,
+  returnCoxModels = F
+)
+
+##--------- Scores 
+cox_Score <-
+  coxph_multitest(
+    data = scoreAnnot,
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "CMS", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+  )
+
+## Scores without covariate
+cox_Score_noCovar <-
+  coxph_multitest(
+    data = scoreAnnot,
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = NULL,
+    nCores = 10
+  )
+```
+
+Make Coef plots comparing teh hazard ratios.
+```{r}
+cox_stage$VariableName <- "Stage"
+cox_msi$VariableName <- "MSI"
+cox_cms$VariableName <- "CMS"
+
+dd <- rbind(cox_stage, cox_msi, cox_cms, 
+            cox_Score[grepl("Res_|Exh_|^CD3$|^CD8$", rownames(cox_Score)), ])
+
+dd <- dd[, c("VariableName",
+             "variable",
+             "exp(coef)",
+             "lower .95",
+             "upper .95",
+             "z",
+             "Pr(>|z|)")]
+
+colnames(dd) <-
+  c("VariableName",
+    "term",
+    "estimate",
+    "conf.low",
+    "conf.high",
+    "z",
+    "p-value")
+
+
+dd <- dd[order(dd$estimate), ]
+dd <- dd[! grepl("All_", dd$VariableName), ]
+
+pdf(
+  paste0(figPath, "OS_TCGA_Cox_Benchmark_Scores_Others.pdf"),
+  height = 4.6,
+  width = 5
+)
+ggstatsplot::ggcoefstats(
+  x = dd,
+  output = "plot",
+  statistic = "z",
+  exponentiate = T
+)
+dev.off()
+```
+
+
+#### Compare base model with added variables
+Compre the base model with only 4 covariates with the models that have new score variables... none of the main signatures are significant... only WNT signalling
+
+```{r}
+covarCol <- c("Age", "Stage", "CMS", "MSI_TCGAbiolink_annot")
+
+covarInfo <- paste(covarCol, collapse = " + ")
+currentFormula <-
+  as.formula(paste('Surv(',
+                   timeCol,
+                   ', ',
+                   eventCol,
+                   ')~',
+                   # variableCol,
+                   # ' + ',
+                   covarInfo))
+
+base_model <-
+  coxph(currentFormula,
+        data = wide2)
+
+
+
+cox_Score_models <-
+  coxph_multitest(
+    data = scoreAnnot,
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "CMS", "MSI_TCGAbiolink_annot"),
+    nCores = 10, 
+    returnCoxModels = T
+  )
+
+anRes <- sapply(cox_Score_models, function(x){
+  anovaRes <- anova(base_model, x)[[4]][2]
+  return(anovaRes)
+})
+
+```
+
+
+
+```{r}
+gg <- c("CD3E", "CD3G", "CD3D", "CD8A", "CD8B")
+
+pdf(paste0(figPath, "OS_TCGA_CD3.CD8_3groups.pdf"), height = 4.8, width = 4.2)
+
+for(i in gg){
+  print(survival_plot(
+  data =
+    ruvTCGA_tum[, rownames(annFilt)],
+  stratify = "expr",
+  annot = annFilt,
+  scoreCol = NULL,
+  gene = i,
+  covariate = NULL,
+  isCategoricalCov = NULL,
+  timeCol = paste0(sn, ".time"),
+  eventCol = sn,
+  nGroup = 3,
+  confInt = F,
+  ylabel = sn,
+  cols =
+    (brewer.pal(8, "Dark2")
+    )))
+}
+dev.off()
+
+
+pdf(paste0(figPath, "OS_TCGA_CD3.CD8_averagedExpr.pdf"), height = 4.8, width = 4.2)
+
+for(i in c("CD3", "CD8")){
+  print(survival_plot(
+  data =
+    ruvTCGA_tum[, rownames(wide2)],
+  stratify = "covariate",
+  annot = wide2,
+  scoreCol = NULL,
+  gene = NULL,
+  covariate = i,
+  isCategoricalCov = TRUE,
+  timeCol = paste0(sn, ".time"),
+  eventCol = sn,
+  nGroup = 3,
+  confInt = F,
+  ylabel = sn,
+  cols =
+    (brewer.pal(8, "Dark2")
+    )))
+}
+dev.off()
+```
+
+**Looking within stages**
+- NK resident signature is associated with poorer survival in stage III and IV
+```{r}
+cox_score_stageHigh <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$Stage %in% c("III", "IV"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+
+cox_score_stageLow <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  & 
+        scoreAnnot$Stage %in% c("I", "II"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+```
+
+
+**Looking within MSI status**
+- CD8_Exh is associated with better survival in MSI high
+```{r}
+cox_score_msiHigh <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$MSI_TCGAbiolink_annot %in% c("MSI-H"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "Stage"),
+    nCores = 10
+)
+
+cox_score_msiLow <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  & 
+         scoreAnnot$MSI_TCGAbiolink_annot %in% c("MSI-L"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "Stage"),
+    nCores = 10
+)
+
+cox_score_mss <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  & 
+         scoreAnnot$MSI_TCGAbiolink_annot %in% c("MSS"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "Stage"),
+    nCores = 10
+)
+
+cox_score_mss_msiLow <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  & 
+         scoreAnnot$MSI_TCGAbiolink_annot %in% c("MSS", "MSI-L"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "Stage"),
+    nCores = 10
+)
+```
+
+
+
+**Looking within CMS status**
+- CD8_Exh is associated with better survival in MSI high
+```{r}
+cox_score_cms1 <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$CMS %in% c("CMS1"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+
+cox_score_cms2 <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$CMS %in% c("CMS2"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+
+cox_score_cms3 <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$CMS %in% c("CMS3"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+
+cox_score_cms4 <- coxph_multitest(
+    data = scoreAnnot[
+      grepl("Exh_|Res_", scoreAnnot$Signature)  &
+        scoreAnnot$CMS %in% c("CMS4"),],
+    variableNameCol = "Signature",
+    variableCol = "Score_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 2,
+    returnCovarStat = F,
+    covarCol = c("Age", "Stage", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+)
+```
+
 ### OS: Score + covariates
-We use our custom function (coxph_multitest) for performing coxph test on several signatures at the same time. We perform the analysis twice, once by grouping samples into two group based on Median scores, and once by grouping them into 3 groups based on the top and bottom 33%-tile. 
+We use our custom function (coxph_multitest) for performing coxph test on several signatures at the same time. We perform the analysis twice, once by grouping samples into two groups based on Median scores, and once by grouping them into 3 groups based on the top and bottom 33%-tile. 
 
 None of the Res_Bulk/Exh_Bulk signatures alone are significantly associated with OS (after taking into account the 4 covariates).  
 
@@ -838,6 +1421,8 @@ cox_OS_Score_3groups_AgeStage <-
 cox_OS_Score_3groups_AgeStage_sig <- cox_OS_Score_3groups_AgeStage %>% filter(`Pr(>|z|)` < 0.05) %>% 
   data.frame(check.names = F)
 
+
+
 ```
 
 
@@ -849,7 +1434,7 @@ trmSigs <- c(
   "CD8_Res_Bulk",
   "CD4_Res_Bulk",
   "NK_Res_Bulk",
-  "All_Res_Bulk", 
+  # "All_Res_Bulk", 
   "CD8NK_Res_Bulk"
   )
 
@@ -857,11 +1442,25 @@ exhSigs <- c(
   "CD8_Exh_Bulk",
   "CD4_Exh_Bulk",
   "NK_Exh_Bulk",
-  "All_Exh_Bulk",
+  # "All_Exh_Bulk",
   "CD8NK_Exh_Bulk"
   )
 
 # selSigs <- c(trmSigs, exhSigs, TGFbGenes)
+
+
+canSigs <-
+  c(
+    "DDR",
+    "OXPHOS",
+    "TP53_signaling",
+    "HPX_EGF_EMT",
+    "Peroxisome",
+    "Mes_Thiery",
+    "Epi_Thiery",
+    "IL6_JAK_STAT3",
+    "TGFb_Signaling"
+  )
 
 exhTGFbCan <- c(exhSigs, canSigs)
 trmTGFbCan <- c(trmSigs, canSigs)
@@ -929,24 +1528,73 @@ wide2Comb[, "CD4_Exh_Bulk--NK_Exh_Bulk"] <-
         "NK_Exh_Bulk")
 
 
+# wide2CombLong <- wide2Comb %>%
+#   pivot_longer(
+#     .,
+#     # cols = 190:ncol(wide2Comb),
+#     cols = 192:ncol(wide2Comb),
+#     values_to = "Comb_2status",
+#     names_to = "Comb_Name"
+#   ) %>%
+#   data.frame()
+  
+# wide2CombLong$OS.time <- wide2CombLong$OS.time/12
+# saveRDS(wide2CombLong, paste0(outPath, "TCGA_Survival_OS_ScoreExpr_wide.RDS")) # previous version
+```
+
+#### IF adding stage and other scores
+We consider MSI-L with MSS together.
+We did not consider CMS as it left us with as low as 13/23 samples in some groups and some did not have CMS grouping.
+```{r}
+wide2Comb$MSI_Group[wide2Comb$MSI_TCGAbiolink_annot == "MSI-L"] <- "MSS"
+
+addFactors <- c("Stage_2group", "MSI_Group", "CD8", "CD3")
+
+for(a in addFactors){
+  for(e in canSigs){
+    currentColumn <- paste(a, e, sep = "--")
+    wide2Comb[, currentColumn] <- paste(wide2Comb[, a], a , "&",
+                                      wide2Comb[, e], e)
+  }
+} 
+
+
+```
+
+```{r}
 wide2CombLong <- wide2Comb %>%
   pivot_longer(
     .,
-    cols = 190:ncol(wide2Comb),
+    # cols = 190:ncol(wide2Comb),
+    cols = 192:ncol(wide2Comb),
     values_to = "Comb_2status",
     names_to = "Comb_Name"
   ) %>%
   data.frame()
-  
 
-saveRDS(wide2CombLong, paste0(outPath, "TCGA_Survival_OS_ScoreExpr_wide.RDS"))
+
+## replace NA.MSI -sigs and NA.Stage--sigs with NA and then remove them
+wide2CombLong$Comb_2status[grepl("^NA ", wide2CombLong$Comb_2status)] <- NA
+wide2CombLong <- wide2CombLong[complete.cases(wide2CombLong$Comb_2status), ]
+
+wide2CombLong$OS.time <- wide2CombLong$OS.time/12
+# saveRDS(wide2CombLong, paste0(outPath, "TCGA_Survival_OS_ScoreExpr_wide.RDS")) # new version
+
+
+
+wide2CombLong_scores <- wide2CombLong[! grepl("MSI_Group--|Stage_2group--", wide2CombLong$Comb_Name), ]
+
+wide2CombLong_msi <- wide2CombLong[grepl("MSI_Group--", wide2CombLong$Comb_Name), ]
+
+wide2CombLong_stage <- wide2CombLong[grepl("Stage_2group--", wide2CombLong$Comb_Name), ]
 ```
 
-The below combination of signatures are significantly associated with OS:
+
+
 ```{r}
-cox_OS_2Comb_AgeStage <-
+cox_OS_2Comb <-
   coxph_multitest(
-    data = wide2CombLong,
+    data = wide2CombLong_scores,
     variableNameCol = "Comb_Name",
     variableCol = "Comb_2status",
     timeCol = "OS.time",
@@ -957,30 +1605,310 @@ cox_OS_2Comb_AgeStage <-
     nCores = 10
   )
 
-
-cox_OS_2Comb_AgeStage_sig <-
-  cox_OS_2Comb_AgeStage %>% filter(`Pr(>|z|)` < 0.05) %>%
+cox_OS_2Comb_sig <-
+  cox_OS_2Comb %>% filter(`Pr(>|z|)` < 0.05) %>%
   data.frame(check.names = F)
 
+# NK_Res_Bulk--Mes_Thiery.currentCoxRes1               Low NK_Res_Bulk & High Mes_Thiery -1.135
+# NK_Res_Bulk--TGFb_Signaling.currentCoxRes2        Low NK_Res_Bulk & Low TGFb_Signaling -0.754
+# NK_Exh_Bulk--DDR.currentCoxRes2                              Low NK_Exh_Bulk & Low DDR  0.906
+# NK_Exh_Bulk--Mes_Thiery.currentCoxRes2                Low NK_Exh_Bulk & Low Mes_Thiery  0.766
+# NK_Exh_Bulk--IL6_JAK_STAT3.currentCoxRes1         Low NK_Exh_Bulk & High IL6_JAK_STAT3  0.828
+# CD8NK_Exh_Bulk--TGFb_Signaling.currentCoxRes1 Low CD8NK_Exh_Bulk & High TGFb_Signaling  0.707
 
-cox_OS_2Comb_AgeStage_sig$variable
+cox_OS_2Comb_stage <-
+  coxph_multitest(
+    data = wide2CombLong_stage,
+    variableNameCol = "Comb_Name",
+    variableCol = "Comb_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 4,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "MSI_TCGAbiolink_annot"),
+    nCores = 10
+  )
 
-write.csv(
-  cox_OS_2Comb_AgeStage,
-  paste0(outPath, "TCGA_COAD_RUV_Cox_OS_2ScorePairs_AllStat.csv"),
-  row.names = F
+cox_OS_2Comb_stage_sig <-
+  cox_OS_2Comb_stage %>% filter(`Pr(>|z|)` < 0.05) %>%
+  data.frame(check.names = F)
+
+# Stage_2group--DDR.currentCoxRes                           I-II Stage_2group & Low DDR  1.070
+# Stage_2group--DDR.currentCoxRes1                       III-IV Stage_2group & High DDR  1.705
+# Stage_2group--DDR.currentCoxRes2                        III-IV Stage_2group & Low DDR  1.555
+# Stage_2group--OXPHOS.currentCoxRes1                 III-IV Stage_2group & High OXPHOS  0.923
+# Stage_2group--OXPHOS.currentCoxRes2                  III-IV Stage_2group & Low OXPHOS  1.023
+# Stage_2group--TP53_signaling.currentCoxRes1 III-IV Stage_2group & High TP53_signaling  0.795
+# Stage_2group--TP53_signaling.currentCoxRes2  III-IV Stage_2group & Low TP53_signaling  0.943
+# Stage_2group--HPX_EGF_EMT.currentCoxRes           I-II Stage_2group & Low HPX_EGF_EMT -0.841
+# Stage_2group--HPX_EGF_EMT.currentCoxRes2        III-IV Stage_2group & Low HPX_EGF_EMT  0.984
+# Stage_2group--Peroxisome.currentCoxRes1         III-IV Stage_2group & High Peroxisome  1.206
+# Stage_2group--Peroxisome.currentCoxRes2          III-IV Stage_2group & Low Peroxisome  0.968
+# Stage_2group--Mes_Thiery.currentCoxRes2          III-IV Stage_2group & Low Mes_Thiery  1.542
+# Stage_2group--Epi_Thiery.currentCoxRes1         III-IV Stage_2group & High Epi_Thiery  1.293
+# Stage_2group--IL6_JAK_STAT3.currentCoxRes1   III-IV Stage_2group & High IL6_JAK_STAT3  1.050
+# Stage_2group--IL6_JAK_STAT3.currentCoxRes2    III-IV Stage_2group & Low IL6_JAK_STAT3  0.963
+# Stage_2group--TGFb_Signaling.currentCoxRes1 III-IV Stage_2group & High TGFb_Signaling  0.918
+
+cox_OS_2Comb_msi <-
+  coxph_multitest(
+    data = wide2CombLong_msi,
+    variableNameCol = "Comb_Name",
+    variableCol = "Comb_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 4,
+    returnCovarStat = F,
+    covarCol = c("Age", "CMS", "Stage"),
+    nCores = 10
+  )
+
+cox_OS_2Comb_msi_sig <-
+  cox_OS_2Comb_msi %>% filter(`Pr(>|z|)` < 0.05) %>%
+  data.frame(check.names = F)
+
+## MSI_Group--Mes_Thiery.
+```
+
+Coef plot for the significant ones:
+- None of the CD3 and CD8 combinations were significant.
+- MSI was only significant when combined with Mes
+- Stage had several significant terms, however, most of it were due to the stage itself...
+```{r}
+
+dd <- rbind(cox_OS_2Comb_sig, cox_OS_2Comb_stage_sig, cox_OS_2Comb_msi_sig)
+dd <- dd[, c("VariableName",
+             "variable",
+             "exp(coef)",
+             "lower .95",
+             "upper .95",
+             "z",
+             "Pr(>|z|)")]
+
+colnames(dd) <-
+  c("VariableName",
+    "term",
+    "estimate",
+    "conf.low",
+    "conf.high",
+    "z",
+    "p-value")
+
+
+dd <- dd[order(dd$estimate), ]
+dd$term <- gsub("_2group", "", dd$term)
+dd$term <- gsub("MSI_Group ", "", dd$term)
+
+pdf(
+  paste0(figPath, "OS_TCGA_Cox_Benchmark_ScorePairs_Others.pdf"),
+  height = 7,
+  width = 5
+)
+ggstatsplot::ggcoefstats(
+  x = dd,
+  output = "plot",
+  statistic = "z",
+  exponentiate = T
+)
+dev.off()
+```
+
+```{r}
+
+dd <- rbind(cox_OS_2Comb, cox_OS_2Comb_stage, cox_OS_2Comb_msi)
+dd <- dd[, c("VariableName",
+             "variable",
+             "exp(coef)",
+             "lower .95",
+             "upper .95",
+             "z",
+             "Pr(>|z|)")]
+
+colnames(dd) <-
+  c("VariableName",
+    "term",
+    "estimate",
+    "conf.low",
+    "conf.high",
+    "z",
+    "p-value")
+
+
+dd <- dd[order(dd$estimate), ]
+dd$term <- gsub("_2group", "", dd$term)
+dd$term <- gsub("MSI_Group ", "", dd$term)
+
+pdf(
+  paste0(figPath, "OS_TCGA_Cox_Benchmark_ScorePairs_Others_ALL.pdf"),
+  height = 18,
+  width = 5
 )
 
-write.csv(
-  cox_OS_2Comb_AgeStage_sig,
-  paste0(outPath, "TCGA_COAD_RUV_Cox_OS_2ScorePairs_significant.csv"),
-  row.names = F
+ggstatsplot::ggcoefstats(
+  x = dd[293:438, ],
+  output = "plot",
+  statistic = "z",
+  exponentiate = T
 )
+
+ggstatsplot::ggcoefstats(
+  x = dd[147:292, ],
+  output = "plot",
+  statistic = "z",
+  exponentiate = T
+)
+
+ggstatsplot::ggcoefstats(
+  x = dd[1:146, ],
+  output = "plot",
+  statistic = "z",
+  exponentiate = T
+)
+
+
+dev.off()
+
+
+```
+
+#### Compare base model with models including score pairs
+```{r}
+covarCol <- c("Age", "Stage", "CMS", "MSI_TCGAbiolink_annot")
+
+covarInfo <- paste(covarCol, collapse = " + ")
+currentFormula <-
+  as.formula(paste('Surv(',
+                   timeCol,
+                   ', ',
+                   eventCol,
+                   ')~',
+                   # variableCol,
+                   # ' + ',
+                   covarInfo))
+
+base_model <-
+  coxph(currentFormula,
+        data = wide2Comb[complete.cases(wide2Comb$Stage), ])
+
+
+
+cox_OS_2Comb_models <-
+  coxph_multitest(
+    data = wide2CombLong_scores[complete.cases(wide2CombLong_scores$Stage), ],
+    variableNameCol = "Comb_Name",
+    variableCol = "Comb_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 4,
+    returnCovarStat = F,
+    covarCol = covarColumns,
+    nCores = 10, 
+    returnCoxModels = T
+  )
+
+anRes_pairs <- sapply(cox_OS_2Comb_models, function(x){
+  anovaRes <- anova(base_model, x)[[4]][2]
+  return(anovaRes)
+})
+
+sigAnova <- names(anRes_pairs[anRes_pairs <= 0.05])
+# "NK_Res_Bulk--Mes_Thiery"    
+# "CD4_Exh_Bulk--TGFb_Signaling"
+# "NK_Exh_Bulk--TGFb_Signaling"   
+# "CD8NK_Exh_Bulk--TGFb_Signaling"   
+
+resData <-
+  data.frame(matrix(ncol = 3, nrow = 0))
+colnames(resData) <- c("pvalue", "Contrast", "Variable")
+        
+for(i in sigAnova) {
+  pairwise_estimate <- multcomp::glht(
+    cox_OS_2Comb_models[names(cox_OS_2Comb_models) == i][[1]],
+    linfct = multcomp::mcp(Comb_2status = "Tukey")
+  )
+  x <- summary(pairwise_estimate)
+  pvals <- data.frame(pvalue = cbind(x$test$pvalues))
+  pvals$Contrast <- names(x$test$coefficients)
+  pvals$Variable <- i
+  
+  resData <- rbind(resData, pvals)
+}
+
+
+resData <- resData[, c(3, 2, 1)]
+write.csv(resData, paste0(outPath, "Cox_TCGA_ANOVA_Tukey.csv"), row.names = F)
+```
+
+
+Look at each of these models that have significant anova test in more details
+```{r}
+cox_OS_2Comb_sigAnova <-
+  coxph_multitest(
+    data = wide2CombLong[wide2CombLong$Comb_Name %in% sigAnova, ],
+    variableNameCol = "Comb_Name",
+    variableCol = "Comb_2status",
+    timeCol = "OS.time",
+    eventCol = "OS",
+    nStrata = 4,
+    returnCovarStat = F,
+    covarCol = covarColumns,
+    nCores = 10, 
+    returnCoxModels = F
+  )
+
+cox_OS_2Comb_sigAnova[cox_OS_2Comb_sigAnova$`Pr(>|z|)` < 0.05, ]
+
+# NK_Res_Bulk--Mes_Thiery.currentCoxRes1               Low NK_Res_Bulk & High Mes_Thiery -1.135
+# CD8NK_Exh_Bulk--TGFb_Signaling.currentCoxRes1 Low CD8NK_Exh_Bulk & High TGFb_Signaling  0.707
+# Stage_2group--DDR.currentCoxRes                            I-II Stage_2group & Low DDR  1.021
+# Stage_2group--DDR.currentCoxRes1                        III-IV Stage_2group & High DDR  2.653
+# Stage_2group--DDR.currentCoxRes2                         III-IV Stage_2group & Low DDR  2.484
+# Stage_2group--HPX_EGF_EMT.currentCoxRes1        III-IV Stage_2group & High HPX_EGF_EMT  1.478
+# Stage_2group--HPX_EGF_EMT.currentCoxRes2         III-IV Stage_2group & Low HPX_EGF_EMT  2.053
+# MSI_Group--Mes_Thiery.currentCoxRes1                   MSS MSI_Group & High Mes_Thiery -1.025
+```
+
+
+The below combination of signatures are significantly associated with OS:
+```{r}
+# cox_OS_2Comb_AgeStage <-
+#   coxph_multitest(
+#     data = wide2CombLong,
+#     # data = wide2CombLong_scores,
+#     variableNameCol = "Comb_Name",
+#     variableCol = "Comb_2status",
+#     timeCol = "OS.time",
+#     eventCol = "OS",
+#     nStrata = 4,
+#     returnCovarStat = F,
+#     covarCol = covarColumns,
+#     nCores = 10
+#   )
+# 
+# 
+# cox_OS_2Comb_AgeStage_sig <-
+#   cox_OS_2Comb_AgeStage %>% filter(`Pr(>|z|)` < 0.05) %>%
+#   data.frame(check.names = F)
+# 
+# 
+# cox_OS_2Comb_AgeStage_sig$variable
+
+# write.csv(
+#   cox_OS_2Comb_AgeStage,
+#   paste0(outPath, "TCGA_COAD_RUV_Cox_OS_2ScorePairs_AllStat.csv"),
+#   row.names = F
+# )
+
+# write.csv(
+#   cox_OS_2Comb_AgeStage_sig,
+#   paste0(outPath, "TCGA_COAD_RUV_Cox_OS_2ScorePairs_significant.csv"),
+#   row.names = F
+# )
 
 ```
 
 ```{r}
-wide2CombLong$OS.time <- wide2CombLong$OS.time/12
+# wide2CombLong$OS.time <- wide2CombLong$OS.time/12
 ```
 
 K-M curves for the significant score combinations. The reported p-values in the below figures are log-rank p-values, and while the p-values from the multivariate Cox prop hazard models are significant for all these signature pairs, the log-rank may not be significant. One of these figures reproduces Figure 6C, left plot. 
@@ -1037,7 +1965,8 @@ sn <- "OS"
 #   height = 5.2,
 #   width = 4.6
 # )
-for(cc in sigPairs){
+# for(cc in sigPairs){
+for(cc in sigAnova){
   
   sc1 <- unlist(strsplit(cc, "--"))[1]
   sc2 <- unlist(strsplit(cc, "--"))[2]

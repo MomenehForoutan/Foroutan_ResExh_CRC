@@ -40,7 +40,12 @@ report/NKTest_ResExh_CRC_files/
 
 report/Compare_Signatures_cache/
 report/Compare_Signatures_files/
-	
+
+figure/CompareSigs/
+figure/TCGA/
+output/TCGA/
+
+
 report/*.html
 *.Rproj
 .DS_Store

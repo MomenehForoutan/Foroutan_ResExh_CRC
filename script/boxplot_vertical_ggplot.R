@@ -54,18 +54,22 @@ boxplot_vertical_ggplot <- function(data,
     coord_flip() +
     scale_colour_manual(values = cols, name = "Cell types") +
     
-    ylab ("log(TPM)") +
+    # facet_wrap(~y.axis.column) +
+    
+    ylab ("") +
+    # ylab ("log(TPM)") +
     xlab("") +
     ggtitle(title) +
     theme(
       panel.grid.minor = element_blank(),
       axis.title = element_text(size = rel(textSize)),
       axis.text.x = element_text(angle = 0, size = rel(textSize)),
-      axis.text.y = element_text(
-        angle = 0,
-        size = rel(textSize),
-        face = "italic"
-      ),
+      axis.text.y = element_blank(),
+      # axis.text.y = element_text(
+      #   angle = 0,
+      #   size = rel(textSize),
+      #   face = "italic"
+      # ),
       axis.line = element_line(colour = "black"),
       axis.ticks = element_line(),
       legend.margin = margin(unit(0, "cm")),
