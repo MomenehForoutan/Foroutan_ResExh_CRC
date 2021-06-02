@@ -392,67 +392,75 @@ cd4Cols <- cellCols[grepl("CD4",
 nkCols <- cellCols[grepl("NK-",
                           names(cellCols))]
 
-fibCols <- cellCols[grepl("Myofib|CAF",
+
+# fibCols <- cellCols[grepl("Myofib|CAF",
+#                           names(cellCols))]
+
+myofibCol <-  cellCols[grepl("Myofib",
                           names(cellCols))]
 
-subSmart <- crcSmart[,
-                     grepl("CD8-", metaSmart$Sub_Cluster) |
-                       grepl("CD4-", metaSmart$Sub_Cluster) |
-                       grepl("NK-", metaSmart$Sub_Cluster) |
-                       grepl("Myofib|CAF", metaSmart$Sub_Cluster)
-                     ]
+cafCol <-  cellCols[grepl("CAF",
+                          names(cellCols))]
 
-subMetaSmart <- metaSmart[grepl("CD8-", metaSmart$Sub_Cluster) |
-                       grepl("CD4-", metaSmart$Sub_Cluster) |
-                       grepl("NK-", metaSmart$Sub_Cluster) |
-                       grepl("Myofib|CAF", metaSmart$Sub_Cluster) 
-                       , ]
-
-rownames(subMetaSmart) <- subMetaSmart$CellName
-
-all(subMetaSmart$CellName == colnames(subSmart))
-
-subMetaSmart$Cell.Annotation <- sapply(subMetaSmart$Sub_Cluster, function(x){
-  unlist(strsplit(x, "-"))[1]
-})
-
-ss <-
-  CreateSeuratObject(counts = subSmart,
-                     project = "Zhang_SmartSeq_T_NK_Fibro",
-                     meta.data = subMetaSmart,
-                     min.cells = 5)
-
-ss[["percent.mt"]] <- PercentageFeatureSet(ss, pattern = "^MT-")
-
-ss <- FindVariableFeatures(ss, selection.method = "vst", nfeatures = 2000)
-all.genes <- rownames(ss)
-ss <- ScaleData(ss, features = all.genes)
-ss <- RunPCA(ss, features = VariableFeatures(object = ss), verbose = F)
-# ElbowPlot(ss, ndims = 40)
-ss <- FindNeighbors(ss, dims = 1:20)
-ss <- FindClusters(ss, resolution = 0.8, random.seed = 20200915)
-ss <- RunUMAP(ss, dims = 1:20, n.neighbors = 30, min.dist = 0.3, seed.use = 20200915)
-
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-
-ss <-
-  CellCycleScoring(
-    ss,
-    s.features = s.genes,
-    g2m.features = g2m.genes,
-    set.ident = FALSE
-  )
-
-ss$MSI <- "MSS"
-ss$MSI[ss$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
+# 
+# subSmart <- crcSmart[,
+#                      grepl("CD8-", metaSmart$Sub_Cluster) |
+#                        grepl("CD4-", metaSmart$Sub_Cluster) |
+#                        grepl("NK-", metaSmart$Sub_Cluster) |
+#                        grepl("Myofib|CAF", metaSmart$Sub_Cluster)
+#                      ]
+# 
+# subMetaSmart <- metaSmart[grepl("CD8-", metaSmart$Sub_Cluster) |
+#                        grepl("CD4-", metaSmart$Sub_Cluster) |
+#                        grepl("NK-", metaSmart$Sub_Cluster) |
+#                        grepl("Myofib|CAF", metaSmart$Sub_Cluster) 
+#                        , ]
+# 
+# rownames(subMetaSmart) <- subMetaSmart$CellName
+# 
+# all(subMetaSmart$CellName == colnames(subSmart))
+# 
+# subMetaSmart$Cell.Annotation <- sapply(subMetaSmart$Sub_Cluster, function(x){
+#   unlist(strsplit(x, "-"))[1]
+# })
+# 
+# ss <-
+#   CreateSeuratObject(counts = subSmart,
+#                      project = "Zhang_SmartSeq_T_NK_Fibro",
+#                      meta.data = subMetaSmart,
+#                      min.cells = 5)
+# 
+# ss[["percent.mt"]] <- PercentageFeatureSet(ss, pattern = "^MT-")
+# 
+# ss <- FindVariableFeatures(ss, selection.method = "vst", nfeatures = 2000)
+# all.genes <- rownames(ss)
+# ss <- ScaleData(ss, features = all.genes)
+# ss <- RunPCA(ss, features = VariableFeatures(object = ss), verbose = F)
+# # ElbowPlot(ss, ndims = 40)
+# ss <- FindNeighbors(ss, dims = 1:20)
+# ss <- FindClusters(ss, resolution = 0.8, random.seed = 20200915)
+# ss <- RunUMAP(ss, dims = 1:20, n.neighbors = 30, min.dist = 0.3, seed.use = 20200915)
+# 
+# s.genes <- cc.genes$s.genes
+# g2m.genes <- cc.genes$g2m.genes
+# 
+# ss <-
+#   CellCycleScoring(
+#     ss,
+#     s.features = s.genes,
+#     g2m.features = g2m.genes,
+#     set.ident = FALSE
+#   )
+# 
+# ss$MSI <- "MSS"
+# ss$MSI[ss$Sample %in% c("P0123", "P0413", "P0825")] <- "MSI-H"
 
 
 ##------ Save data after UMAP
 
-saveRDS(ss, file = paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP.RDS"))
+# saveRDS(ss, file = paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP.RDS"))
 
-# ss <- readRDS(paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP.RDS"))
+ss <- readRDS(paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP.RDS"))
 
 
 # saveRDS(ss, file = paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_20200928_UMAP.RDS"))
@@ -488,7 +496,7 @@ ss@meta.data <- data.frame(ss@meta.data ,
 saveRDS(ss, file = paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP_Scores.RDS"))
 
 # saveRDS(ss, file = paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_20200928_UMAP_Scores.RDS"))
-# ss <- readRDS(paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_20200928_UMAP_Scores.RDS"))
+# ss <- readRDS(paste0(outPath, "DontPush/Zhang_SmartSeq_SeuratObj_T_NK_Fibro_UMAP_Scores.RDS"))
 ```
 
 ## UMAPs
@@ -705,18 +713,22 @@ dev.off()
 ```
 
 
-### Boxplot of signature genes
-Define Exh and Res cells
+# Check markers in stroma
+
+#### Define Exh and Res subsets in each cell type
+Define Exh and Res cells - for each of the NK, CD8 and CD4 cells, we define Exh and Res cells to be able to compare the expression of the genes in Exh/Res cells vs Fibroblasts.
 ```{r}
 ##------------ For NK cells
-cell_attrs %>%
+pNK <- cell_attrs %>%
   filter(Global_Cluster == "NK cell") %>% 
   ggplot(.,
          aes(x = NK_Res, y = NK_Exh, color = Sub_Cluster)) +
   geom_point(alpha = 0.8, size = 1) +
-  scale_color_manual(values = nkCols) +
+  scale_color_manual(values = nkCols) + 
+  geom_vline(xintercept = 0.75) +
+  geom_hline(yintercept = 0.75) +
   currentTheme +
-  guides(color = guide_legend(nrow = 3,
+  guides(color = guide_legend(nrow = 4,
                               override.aes = list(size = 3)))
 
 
@@ -732,14 +744,18 @@ cell_attrs$Cell_Groups[cell_attrs$Global_Cluster == "NK cell" &
 
 
 ##------------ For CD8 T cells
-cell_attrs %>%
+pCD8 <- cell_attrs %>%
   filter(Global_Cluster == "CD8 T cell") %>% 
   ggplot(.,
          aes(x = CD8_Res, y = CD8_Exh, color = Sub_Cluster)) +
   geom_point(alpha = 0.8, size = 1) +
   scale_color_manual(values = cd8Cols) +
+  geom_vline(xintercept = 0.7) +
+  geom_hline(yintercept = 0.6) +
+  geom_vline(xintercept = 0.8, lty = 2) +
+  geom_hline(yintercept = 0.5, lty = 2) +
   currentTheme +
-  guides(color = guide_legend(nrow = 3,
+  guides(color = guide_legend(nrow = 4,
                               override.aes = list(size = 3)))
 
 
@@ -754,14 +770,18 @@ cell_attrs$Cell_Groups[cell_attrs$Global_Cluster == "CD8 T cell" &
                          ] <- "CD8_Res"
 
 ##------------ For CD4 T cells
-cell_attrs %>%
+pCD4 <- cell_attrs %>%
   filter(Global_Cluster == "CD4 T cell") %>% 
   ggplot(.,
          aes(x = CD4_Res, y = CD4_Exh, color = Sub_Cluster)) +
   geom_point(alpha = 0.8, size = 1) +
   scale_color_manual(values = cd4Cols) +
+  geom_vline(xintercept = 0.75) +
+  geom_hline(yintercept = 0.65) +
+  geom_vline(xintercept = 0.85, lty = 2) +
+  geom_hline(yintercept = 0.5, lty = 2) +
   currentTheme +
-  guides(color = guide_legend(nrow = 3,
+  guides(color = guide_legend(nrow = 4,
                               override.aes = list(size = 3)))
 
 
@@ -776,7 +796,22 @@ cell_attrs$Cell_Groups[cell_attrs$Global_Cluster == "CD4 T cell" &
                          ] <- "CD4_Res"
 
 
-cell_attrs$Cell_Groups[grepl("Fibroblast", cell_attrs$Global_Cluster)] <- "Fibroblast"
+
+pdf(
+  paste0(figPath, "Scatterplot_Scores_Res_Exh_ZhangSmartSeq.pdf"),
+  height = 6,
+  width = 6
+)
+pNK
+pCD8
+pCD4
+dev.off()
+
+
+
+# cell_attrs$Cell_Groups[grepl("Fibroblast", cell_attrs$Global_Cluster)] <- "Fibroblast"
+cell_attrs$Cell_Groups[grepl("Myofib", cell_attrs$Sub_Cluster)] <- "Myofib"
+cell_attrs$Cell_Groups[grepl("CAF-", cell_attrs$Sub_Cluster)] <- "CAF"
 
 
 cell_attrs_sub <- cell_attrs[complete.cases(cell_attrs$Cell_Groups), ]
@@ -786,101 +821,6 @@ cell_attrs_sub <- cell_attrs[complete.cases(cell_attrs$Cell_Groups), ]
 exprData <- as.matrix(GetAssayData(ss, slot = "data"))
 exprData_sub <- exprData[, row.names(cell_attrs_sub)]
 
-
-gg <- unique(exhData_CanPass0$gene)
-# gg <- unique(trmData_CanPass0$gene)
-
-exprData_Genes <-
-  exprData_sub[gg, , drop = F]
-
-
-exprData_Genes <-
-  data.frame(
-    cell_attrs_sub,
-    data.frame(
-      t(exprData_Genes),
-      check.rows = F,
-      check.names = F
-    ),
-    check.rows = F,
-    check.names = F
-  )
-
-exprData_GenesLong <-
-  pivot_longer(
-    exprData_Genes,
-    cols = gg,
-    names_to = "Genes",
-    values_to = "logExpr"
-  )
-
-exprData_GenesLong$Cell_Groups <-
-  factor(
-    exprData_GenesLong$Cell_Groups,
-    levels = c(
-      'CD4_Exh',
-      'CD4_Res',
-      'CD8_Exh',
-      'CD8_Res',
-      'NK_Exh',
-      'NK_Res',
-      'Fibroblast'
-    )
-  )
-
-
-
-
-for(i in unique(exprData_GenesLong$Genes)){
-  # x <- paste(trmData_CanPass0$Cell.Type[trmData_CanPass0$gene %in% i], collapse = " & ")
-  x <- paste(exhData_CanPass0$Cell.Type[exhData_CanPass0$gene %in% i], collapse = " & ")
-  exprData_GenesLong$Gene_Marker[exprData_GenesLong$Genes == i] <- paste0(i, "\n(", x, ")")
-  
-}
-
-  legend_title_size <- 8 * textSize
-  legend_text_size  <- 7 * textSize
-
-pdf(
-  # paste0(figPath, "Boxplot_Expr_ResMarkerCanPass_ExhResCells.pdf"),
-  paste0(figPath, "Boxplot_Expr_ExhMarkerCanPass_ExhResCells.pdf"),
-    # height = 7.5,
-    height = 14.5,
-    width = 10)
-ggplot(exprData_GenesLong, aes(Cell_Groups, logExpr, color = Cell_Groups)) +
-  geom_boxplot(outlier.size = 0.2, show.legend = F) +
-  facet_wrap(~ Gene_Marker, ncol = 7) + 
-  scale_color_manual(values = brewer.pal(7, "Paired")) +
-  # coord_flip() +
-  theme_bw() +
-    coord_flip() +
-    ylab ("") +
-    xlab("log(Expr)") +
-    # ggtitle(title) +
-    theme(
-      panel.grid.minor = element_blank(),
-      axis.title = element_text(size = rel(textSize)),
-      axis.text.x = element_text(angle = 0, size = rel(textSize)),
-      # axis.text.y = element_blank(),
-      axis.text.y = element_text(
-        angle = 0,
-        size = rel(textSize),
-        face = "italic"
-      ),
-      axis.line = element_line(colour = "black"),
-      axis.ticks = element_line(),
-      legend.margin = margin(unit(0, "cm")),
-      legend.title = element_text(face = "italic", size = legend_title_size),
-      legend.text = element_text(size = legend_text_size),
-      legend.key.size = unit(3, 'lines'),
-      plot.title = element_text(
-        face = "bold",
-        size = rel(textSize),
-        hjust = 0.5
-      )
-    ) +
-    guides(fill = guide_legend(reverse = TRUE))
-dev.off()
 
 
 
@@ -920,6 +860,356 @@ dev.off()
 # DEGs_CD8Exh$PctPass <- FALSE
 # DEGs_CD8Exh$PctPass[DEGs_CD8Exh$gene %in% pctData_cd8ExhPass$gene] <- TRUE
 
+```
+
+#### Boxplot of Exh markers
+```{r}
+
+gg <- unique(exhData_CanPass0$gene)
+
+exprData_Genes <-
+  exprData_sub[gg, , drop = F]
+
+exprData_Genes <-
+  data.frame(
+    cell_attrs_sub,
+    data.frame(
+      t(exprData_Genes),
+      check.rows = F,
+      check.names = F
+    ),
+    check.rows = F,
+    check.names = F
+  )
+
+
+exprData_GenesLong <-
+  pivot_longer(
+    exprData_Genes,
+    cols = gg,
+    names_to = "Genes",
+    values_to = "logExpr"
+  )
+
+exprData_GenesLong$Cell_Groups <-
+  factor(
+    exprData_GenesLong$Cell_Groups,
+    levels = c(
+      'CD4_Exh',
+      'CD4_Res',
+      'CD8_Exh',
+      'CD8_Res',
+      'NK_Exh',
+      'NK_Res',
+      # "Fibroblast"
+      'Myofib',
+      "CAF"
+    )
+  )
+
+
+
+for(i in unique(exprData_GenesLong$Genes)){
+  # x <- paste(trmData_CanPass0$Cell.Type[trmData_CanPass0$gene %in% i], collapse = " & ")
+  x <- paste(exhData_CanPass0$Cell.Type[exhData_CanPass0$gene %in% i], collapse = " & ")
+  exprData_GenesLong$Gene_Marker[exprData_GenesLong$Genes == i] <- paste0(i, "\n(", x, ")")
+  
+}
+
+
+  legend_title_size <- 8 * textSize
+  legend_text_size  <- 7 * textSize
+
+pdf(
+  # paste0(figPath, "Boxplot_Expr_ResMarkerCanPass_ExhResCells.pdf"),
+  paste0(figPath, "Boxplot_Expr_ExhMarkerCanPass_ExhResCells_MyoCAF.pdf"),
+    # height = 7.5,
+    height = 15.5,
+    width = 10)
+ggplot(exprData_GenesLong, aes(Cell_Groups, logExpr, color = Cell_Groups)) +
+  geom_boxplot(outlier.size = 0.2, show.legend = F) +
+  facet_wrap(~ Gene_Marker, ncol = 7) + 
+  scale_color_manual(values = brewer.pal(8, "Paired")) +
+  # coord_flip() +
+  theme_bw() +
+    coord_flip() +
+    ylab ("") +
+    xlab("log(Expr)") +
+    ggtitle("Expression of Exh_Bulk signture genes in Zhang et al single cell data") +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = rel(textSize)),
+      axis.text.x = element_text(angle = 0, size = rel(textSize)),
+      # axis.text.y = element_blank(),
+      axis.text.y = element_text(
+        angle = 0,
+        size = rel(textSize),
+        face = "italic"
+      ),
+      axis.line = element_line(colour = "black"),
+      axis.ticks = element_line(),
+      legend.margin = margin(unit(0, "cm")),
+      legend.title = element_text(face = "italic", size = legend_title_size),
+      legend.text = element_text(size = legend_text_size),
+      legend.key.size = unit(3, 'lines'),
+      plot.title = element_text(
+        face = "bold",
+        size = rel(textSize),
+        hjust = 0.5
+      )
+    ) +
+    guides(fill = guide_legend(reverse = TRUE))
+dev.off()
+
+```
+
+#### Boxplot of Res makers
+```{r}
+
+gg <- unique(trmData_CanPass0$gene)
+
+exprData_Genes <-
+  exprData_sub[gg, , drop = F]
+
+exprData_Genes <-
+  data.frame(
+    cell_attrs_sub,
+    data.frame(
+      t(exprData_Genes),
+      check.rows = F,
+      check.names = F
+    ),
+    check.rows = F,
+    check.names = F
+  )
+
+
+exprData_GenesLong <-
+  pivot_longer(
+    exprData_Genes,
+    cols = gg,
+    names_to = "Genes",
+    values_to = "logExpr"
+  )
+
+exprData_GenesLong$Cell_Groups <-
+  factor(
+    exprData_GenesLong$Cell_Groups,
+    levels = c(
+      'CD4_Exh',
+      'CD4_Res',
+      'CD8_Exh',
+      'CD8_Res',
+      'NK_Exh',
+      'NK_Res',
+      # "Fibroblast"
+      'Myofib',
+      "CAF"
+    )
+  )
+
+
+
+for(i in unique(exprData_GenesLong$Genes)){
+  x <- paste(trmData_CanPass0$Cell.Type[trmData_CanPass0$gene %in% i], collapse = " & ")
+  # x <- paste(exhData_CanPass0$Cell.Type[exhData_CanPass0$gene %in% i], collapse = " & ")
+  exprData_GenesLong$Gene_Marker[exprData_GenesLong$Genes == i] <- paste0(i, "\n(", x, ")")
+  
+}
+
+
+  legend_title_size <- 8 * textSize
+  legend_text_size  <- 7 * textSize
+
+pdf(
+  paste0(figPath, "Boxplot_Expr_ResMarkerCanPass_ExhResCells_MyoCAF.pdf"),
+  # paste0(figPath, "Boxplot_Expr_ExhMarkerCanPass_ExhResCells_MyoCAF.pdf"),
+    height = 8.5,
+    # height = 15.5,
+    width = 10)
+ggplot(exprData_GenesLong, aes(Cell_Groups, logExpr, color = Cell_Groups)) +
+  geom_boxplot(outlier.size = 0.2, show.legend = F) +
+  facet_wrap(~ Gene_Marker, ncol = 7) + 
+  scale_color_manual(values = brewer.pal(8, "Paired")) +
+  # coord_flip() +
+  theme_bw() +
+    coord_flip() +
+    ylab ("") +
+    xlab("log(Expr)") +
+    ggtitle("Expression of Res_Bulk signture genes in Zhang et al single cell data") +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = rel(textSize)),
+      axis.text.x = element_text(angle = 0, size = rel(textSize)),
+      # axis.text.y = element_blank(),
+      axis.text.y = element_text(
+        angle = 0,
+        size = rel(textSize),
+        face = "italic"
+      ),
+      axis.line = element_line(colour = "black"),
+      axis.ticks = element_line(),
+      legend.margin = margin(unit(0, "cm")),
+      legend.title = element_text(face = "italic", size = legend_title_size),
+      legend.text = element_text(size = legend_text_size),
+      legend.key.size = unit(3, 'lines'),
+      plot.title = element_text(
+        face = "bold",
+        size = rel(textSize),
+        hjust = 0.5
+      )
+    ) +
+    guides(fill = guide_legend(reverse = TRUE))
+dev.off()
+
+```
+
+### Quantile comparison with stroma/fibroblast
+Here we label genes that have higher median expression in stroma compared to each of teh corresponding cell types, and then we remove them from our Bulk signatures.
+```{r}
+exhData_CanPass0$Cell_Marker <- paste(exhData_CanPass0$Cell.Type,
+                                      exhData_CanPass0$Marker, 
+                                      sep = "_")
+
+
+trmData_CanPass0$Cell_Marker <- paste(trmData_CanPass0$Cell.Type,
+                                      trmData_CanPass0$Marker,
+                                      sep = "_")
+
+markersCanPass0 <- rbind(exhData_CanPass0, trmData_CanPass0)
+
+gg <- unique(markersCanPass0$gene)
+
+
+exprData_Genes <-
+  exprData_sub[gg, , drop = F]
+
+exprData_Genes <-
+  data.frame(
+    cell_attrs_sub,
+    data.frame(
+      t(exprData_Genes),
+      check.rows = F,
+      check.names = F
+    ),
+    check.rows = F,
+    check.names = F
+  )
+
+
+exprData_GenesLong <-
+  pivot_longer(
+    exprData_Genes,
+    cols = gg,
+    names_to = "Genes",
+    values_to = "logExpr"
+  )
+
+exprData_GenesLong$Cell_Groups[grepl("Myofib|CAF", 
+                                     exprData_GenesLong$Cell_Groups)] <- "Fibroblast"
+
+exprData_GenesLong$Cell_Groups <-
+  factor(
+    exprData_GenesLong$Cell_Groups,
+    levels = c(
+      'CD4_Exh',
+      'CD4_Res',
+      'CD8_Exh',
+      'CD8_Res',
+      'NK_Exh',
+      'NK_Res',
+      'Fibroblast'
+    )
+  )
+
+
+for(i in unique(exprData_GenesLong$Genes)){
+  x <- paste(markersCanPass0$Cell_Marker[markersCanPass0$gene %in% i], collapse = " & ")
+  exprData_GenesLong$Cell_Marker[exprData_GenesLong$Genes == i] <- x
+    # paste0(i, "\n(", x, ")")
+}
+
+## calculate the median expression of genes in each cell group
+exprData_GenesLong_medExpr <- exprData_GenesLong %>%
+  group_by(Cell_Groups, Genes) %>%
+  mutate(medExpr_cellGroup = median(logExpr)) %>% 
+  mutate(lowExpr_cellGroup = quantile(logExpr, probs = 0.75)) %>% 
+  mutate(highExpr_cellGroup = quantile(logExpr, probs = 0.85)) %>% 
+  data.frame()
+
+exprData_GenesLong_medExpr_unique <- exprData_GenesLong_medExpr %>% 
+  mutate(Cell_Gene = paste(Cell_Groups, Genes, sep = "\n")) %>% 
+  filter(!duplicated(Cell_Gene)) %>% 
+  data.frame()
+
+
+##--------- comparing medians:
+
+for(cc in c("NK_Res", "NK_Exh", "CD8_Res", "CD8_Exh", "CD4_Res", "CD4_Exh")){
+
+  curCellData <- exprData_GenesLong_medExpr_unique %>% 
+    ## subset to NK markers
+    filter(grepl(cc, Cell_Marker)) %>% 
+    ## subset to NK_Res or NKJ_Exh markers and only retain those cells 
+    filter(grepl(cc, Cell_Gene) | grepl("Fibro", Cell_Gene)) %>% 
+    data.frame()
+
+  for(g in unique(curCellData$Genes)){
+    curCellData_g <- curCellData[grepl(g, curCellData$Genes), ]
+    
+    # print(paste0(cc, "--", g, " -- Fibro: ", 
+    #                      curCellData_g$medExpr_cellGroup[grepl("Fibroblast", curCellData_g$Cell_Gene)], 
+    #                      " -- ", cc, ": ", 
+    #                      curCellData_g$medExpr_cellGroup[grepl(cc, curCellData_g$Cell_Gene)]))
+    
+    
+    if(
+      curCellData_g$medExpr_cellGroup[grepl("Fibroblast", curCellData_g$Cell_Gene)] >
+        curCellData_g$medExpr_cellGroup[grepl(cc, curCellData_g$Cell_Gene)]
+    ){
+            print(paste0(cc, "--", g,
+                         " -- Fibro: ",
+                         curCellData_g$medExpr_cellGroup[grepl("Fibroblast", curCellData_g$Cell_Gene)],
+                         " -- ", cc, ": ",
+                         curCellData_g$medExpr_cellGroup[grepl(cc, curCellData_g$Cell_Gene)]))
+    }
+
+  }
+}
+
+# 3/10 CD4_Res
+# 2/37 CD4_Exh
+# 1/17 CD8_Exh
+
+# [1] "CD8_Exh--CSF1--TRUE"
+# [1] "CD4_Res--PPP1R15A--TRUE"
+# [1] "CD4_Res--NR4A3--TRUE"
+# [1] "CD4_Res--ITGA1--TRUE"
+# [1] "CD4_Exh--FNDC3B--TRUE"
+# [1] "CD4_Exh--IL1R1--TRUE"
+
+badGenes <- c(
+  "CD8_Exh--CSF1",
+  "CD4_Res--PPP1R15A",
+  "CD4_Res--NR4A3",
+  "CD4_Res--ITGA1",
+  "CD4_Exh--FNDC3B",
+  "CD4_Exh--IL1R1"
+)
+
+
+markersCanPass0$Marker_Genes <-
+  paste(markersCanPass0$Cell_Marker, markersCanPass0$gene, sep = "--")
+
+markersCanPass0$HighInStroma <- FALSE
+markersCanPass0$HighInStroma[markersCanPass0$Marker_Genes %in% badGenes] <- TRUE
+
+write.table(markersCanPass0, paste0(outPath, "Markers_ResExh_Bulk_Stroma.txt"), 
+            row.names = F, sep = "\t")
+
+
+# markersCanPass0 <- read.table(paste0(outPath, "Markers_ResExh_Bulk_Stroma.txt"),
+#                               header = T, sep = "\t")
 ```
 
 

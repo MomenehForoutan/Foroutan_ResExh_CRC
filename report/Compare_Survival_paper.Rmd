@@ -1,5 +1,5 @@
-
-
+compare one vs others:
+https://stackoverflow.com/questions/21367259/r-cox-hazard-model-not-including-levels-of-a-factor  
 # Set up and overview
 In this document, we compare teh results of the survival analyses in teh TCGA to those from the Marisa et al data.
 ```{r}
@@ -77,28 +77,136 @@ cols <-  c(
   brewer.pal(9, "YlGn")[c(8, 3, 7, 4, 6, 9, 5)])
 
 
-# source(paste0(scriptPath, "visReduction_function.R"))
 source("../script/coxph_analysis.R")
 source("../script/survival_plot.R")
+
 ```
 
 
 # Compare OS 
 ## Score pairs
 Three common significant score pairs are below.
+ [1] "CD4_Res_Bulk--CD8_Exh_Bulk"    
+ [2] "CD4_Res_Bulk--CD8NK_Exh_Bulk"  
+ [3] "NK_Res_Bulk--CD8_Exh_Bulk"     
+ [4] "NK_Res_Bulk--NK_Exh_Bulk"      
+ [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"   
+ [6] "CD8_Exh_Bulk--CD4_Res_Bulk"    
+ [7] "CD8_Exh_Bulk--NK_Res_Bulk"     
+ [8] "NK_Exh_Bulk--NK_Res_Bulk"      
+ [9] "NK_Exh_Bulk--IL6_JAK_STAT3"    
+[10] "NK_Exh_Bulk--TGFb_Signaling"   
+[11] "CD8NK_Exh_Bulk--CD4_Res_Bulk"  
+[12] "CD8NK_Exh_Bulk--NK_Res_Bulk"   
+[13] "CD8NK_Exh_Bulk--IL6_JAK_STAT3" 
+[14] "CD8NK_Exh_Bulk--TGFb_Signaling"
 ```{r}
-os_scorePairs_mar <- read.csv(paste0(marPath, "Marisa_Cox_OS_2ScorePairs_significant2.csv"), 
-         stringsAsFactors = F, 
-         check.names = F)
+##---- without covars
+os_scorePairs_mar <- read.csv(
+  paste0(
+    marPath,
+    "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+    # "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+  ),
+  stringsAsFactors = F,
+  check.names = F
+)
 
-os_scorePairs_tcga <- read.csv(paste0(tcgaPath, "TCGA_COAD_RUV_Cox_OS_2ScorePairs_significant.csv"), 
-         stringsAsFactors = F, 
-         check.names = F)
+os_scorePairs_tcga <-
+  read.csv(
+    paste0(
+      tcgaPath,
+      "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+      # "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+    ),
+    stringsAsFactors = F,
+    check.names = F
+  )
 
-com_os_scorePairs <- intersect(os_scorePairs_tcga$VariableName, os_scorePairs_mar$VariableName)
+##--get common contrasts
+comCntrasts <-
+  intersect(os_scorePairs_tcga$Contrast, os_scorePairs_mar$Contrast)
+
+com_os_scorePairs <-
+  unique(os_scorePairs_tcga$VariableName[os_scorePairs_tcga$Contrast %in% comCntrasts])
 com_os_scorePairs
+# 
+# 
+# ##--------- with covars
+# os_scorePairs_mar_cov <- read.csv(
+#   paste0(
+#     marPath,
+#     "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+#     # "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+#   ),
+#   stringsAsFactors = F,
+#   check.names = F
+# )
+# 
+# os_scorePairs_tcga_cov <-
+#   read.csv(
+#     paste0(
+#       tcgaPath,
+#       "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+#       # "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+#     ),
+#     stringsAsFactors = F,
+#     check.names = F
+#   )
+# 
+# comCntrasts_cov <-
+#   intersect(os_scorePairs_tcga_cov$Contrast, os_scorePairs_mar_cov$Contrast)
+# 
+# com_os_scorePairs_cov <-
+#   unique(os_scorePairs_tcga_cov$VariableName[os_scorePairs_tcga_cov$Contrast %in% comCntrasts_cov])
+# 
+# com_os_scorePairs_cov
+# 
+# 
+# 
+# com_os_scorePairs_cov
+#  [1] "CD4_Res_Bulk--CD8_Exh_Bulk"     "CD4_Res_Bulk--CD8NK_Exh_Bulk"  
+#  [3] "NK_Res_Bulk--CD8_Exh_Bulk"      "NK_Res_Bulk--NK_Exh_Bulk"      
+#  [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"    "CD8_Exh_Bulk--CD4_Res_Bulk"    
+#  [7] "CD8_Exh_Bulk--NK_Res_Bulk"      "NK_Exh_Bulk--NK_Res_Bulk"      
+#  [9] "NK_Exh_Bulk--IL6_JAK_STAT3"     "NK_Exh_Bulk--TGFb_Signaling"   
+# [11] "CD8NK_Exh_Bulk--CD4_Res_Bulk"   "CD8NK_Exh_Bulk--NK_Res_Bulk"   
+# [13] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
+
+
+# com_os_scorePairs
+#  [1] "CD8_Res_Bulk--OXPHOS"           "CD4_Res_Bulk--OXPHOS"          
+#  [3] "NK_Res_Bulk--NK_Exh_Bulk"       "NK_Res_Bulk--OXPHOS"           
+#  [5] "CD8NK_Res_Bulk--NK_Exh_Bulk"    "NK_Exh_Bulk--NK_Res_Bulk"      
+#  [7] "NK_Exh_Bulk--CD8NK_Res_Bulk"    "NK_Exh_Bulk--DDR"              
+#  [9] "NK_Exh_Bulk--OXPHOS"            "NK_Exh_Bulk--HPX_EGF_EMT"      
+# [11] "NK_Exh_Bulk--Peroxisome"        "NK_Exh_Bulk--Mes_Thiery"       
+# [13] "NK_Exh_Bulk--Epi_Thiery"        "NK_Exh_Bulk--IL6_JAK_STAT3"    
+# [15] "NK_Exh_Bulk--TGFb_Signaling"    "CD8NK_Exh_Bulk--DDR"           
+# [17] "CD8NK_Exh_Bulk--OXPHOS"         "CD8NK_Exh_Bulk--HPX_EGF_EMT"   
+# [19] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
+
+## 14 covs, and 20 noCovs --> 6 common
+# intersect(com_os_scorePairs_cov, com_os_scorePairs)
+# [1] "NK_Res_Bulk--NK_Exh_Bulk"       "NK_Exh_Bulk--NK_Res_Bulk"      
+# [3] "NK_Exh_Bulk--IL6_JAK_STAT3"     "NK_Exh_Bulk--TGFb_Signaling"   
+# [5] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
+
+
+## 4 common contrasts
+# intersect(comCntrasts_cov, comCntrasts)
+# [1] "Low NK_Res_Bulk & High NK_Exh_Bulk - High NK_Res_Bulk & Low NK_Exh_Bulk"          
+# [2] "Low NK_Exh_Bulk & High NK_Res_Bulk - High NK_Exh_Bulk & Low NK_Res_Bulk"          
+# [3] "Low NK_Exh_Bulk & High TGFb_Signaling - High NK_Exh_Bulk & Low TGFb_Signaling"    
+# [4] "Low CD8NK_Exh_Bulk & High IL6_JAK_STAT3 - High CD8NK_Exh_Bulk & Low IL6_JAK_STAT3"
+
 ```
 
+```{r}
+
+# os_scorePairs_mar[os_scorePairs_mar$VariableName == "CD8NK_Exh_Bulk_Str--TGFb_Signaling", ]
+
+```
 
 
 ### Plot survival
@@ -106,8 +214,8 @@ Generate Figure 6C.
 ```{r, fig.height = 6.5, fig.width = 12}
 library(gridExtra)
 
-wide2CombLong_tcga <- readRDS(paste0(tcgaPath, "TCGA_Survival_OS_ScoreExpr_wide.RDS"))
-wide2CombLong_mar <- readRDS(paste0(marPath, "Marisa_Survival_OS_ScoreExpr_wide.RDS"))
+wide2CombLong_tcga <- readRDS(paste0(tcgaPath, "TCGA_Survival_OS_ScoreExpr_wide_Str.RDS"))
+wide2CombLong_mar <- readRDS(paste0(marPath, "Marisa_Survival_OS_ScoreExpr_wide_Str.RDS"))
 
 selScorePair_tcga <- wide2CombLong_tcga[
   wide2CombLong_tcga$Comb_Name  %in% 
@@ -117,18 +225,20 @@ selScorePair_mar <- wide2CombLong_mar[
   wide2CombLong_mar$Comb_Name  %in% 
     com_os_scorePairs, ]
 
-# pdf(
-#   paste0(figPath, "OS_Comparison_ScorePairs.pdf"),
-#   height = 6.5,
-#   width = 12
-# )
+
+pdf(
+  # paste0(figPath, "OS_Comparison_ScorePairs_Str_Cont.pdf"),
+  paste0(figPath, "OS_Comparison_ScorePairs_Str_Pairwise_ComContrasts.pdf"),
+  height = 6.5,
+  width = 12
+)
 
 # i <- "NK_Exh_Bulk--OXPHOS"
-for(i in com_os_scorePairs){
+for(j in com_os_scorePairs){
   survival_pairPlots(
   data1 = selScorePair_tcga,
   data2 = selScorePair_mar,
-  strataName = i,
+  strataName = j,
   strataNameColumn = "Comb_Name",
   strataColumn = "Comb_2status",
   mainTitle1 = "TCGA\n",
@@ -146,38 +256,52 @@ for(i in com_os_scorePairs){
   currentTheme = currentTheme
   )
 }
-  
-# dev.off()
+
+dev.off()
 
 ```
 
 
 ### Coef plot
-Here we regenarte Figure 6A.
+Here we regenerate Figure 6A.
+
+If a data frame is used, it must contain columns named term (names of predictors) and estimate (corresponding estimates of coefficients or other quantities of interest).
+
 ```{r}
-cox_OS_2Comb_sig_tcga <- read.csv(
-  paste0(
-    tcgaPath,
-    "TCGA_COAD_RUV_Cox_OS_2ScorePairs_significant.csv"
-  ),
-  stringsAsFactors = F,
-  check.names = F
+cox_OS_2Comb_sig_tcga <- os_scorePairs_tcga
+
+## subset to common ones
+cox_OS_2Comb_sig_tcga <- cox_OS_2Comb_sig_tcga[cox_OS_2Comb_sig_tcga$Contrast %in% comCntrasts, ]
+
+cox_OS_2Comb_sig_tcga$Contrast <- gsub(
+  "High", "H", cox_OS_2Comb_sig_tcga$Contrast
 )
 
-cox_OS_2Comb_sig_mar <- read.csv(
-  paste0(
-    marPath,
-    "Marisa_Cox_OS_2ScorePairs_significant2.csv"
-  ),
-  stringsAsFactors = F,
-  check.names = F
+cox_OS_2Comb_sig_tcga$Contrast <- gsub(
+  "Low", "L", cox_OS_2Comb_sig_tcga$Contrast
 )
 
 
-dd_tcga <- cox_OS_2Comb_sig_tcga[grepl("DDR|IL6_JAK_STAT3|TGFb_Signaling",
-                                       cox_OS_2Comb_sig_tcga$VariableName),
+cox_OS_2Comb_sig_mar <- os_scorePairs_mar
+
+## subset to common ones
+cox_OS_2Comb_sig_mar <- cox_OS_2Comb_sig_mar[cox_OS_2Comb_sig_mar$Contrast %in% comCntrasts, ]
+
+
+cox_OS_2Comb_sig_mar$Contrast <- gsub(
+  "High", "H", cox_OS_2Comb_sig_mar$Contrast
+)
+
+cox_OS_2Comb_sig_mar$Contrast <- gsub(
+  "Low", "L", cox_OS_2Comb_sig_mar$Contrast
+)
+
+
+
+dd_tcga <- cox_OS_2Comb_sig_tcga[,
                                  c("VariableName",
-                                   "variable",
+                                   # "variable",
+                                   "Contrast", ## instead on variable
                                    "exp(coef)",
                                    "lower .95",
                                    "upper .95",
@@ -185,10 +309,11 @@ dd_tcga <- cox_OS_2Comb_sig_tcga[grepl("DDR|IL6_JAK_STAT3|TGFb_Signaling",
                                    "Pr(>|z|)")]
 
 
-dd_mar <- cox_OS_2Comb_sig_mar[grepl("DDR|IL6_JAK_STAT3|TGFb_Signaling",
-                                       cox_OS_2Comb_sig_mar$VariableName),
+
+dd_mar <- cox_OS_2Comb_sig_mar[,
                                  c("VariableName",
-                                   "variable",
+                                   "Contrast",
+                                   # "variable",
                                    "exp(coef)",
                                    "lower .95",
                                    "upper .95",
@@ -196,6 +321,7 @@ dd_mar <- cox_OS_2Comb_sig_mar[grepl("DDR|IL6_JAK_STAT3|TGFb_Signaling",
                                    "Pr(>|z|)")]
 
 colnames(dd_tcga) <- colnames(dd_mar) <-
+  # colnames(dd_tcga_Str) <- colnames(dd_mar_Str) <-
   c("VariableName",
     "term",
     "estimate",
@@ -210,267 +336,257 @@ dd_mar <- dd_mar[order(dd_mar$estimate), ]
 
 
 p1 <- ggstatsplot::ggcoefstats(
-  x = dd_tcga,
+  x = dd_tcga, # for all significant terms in tcga
   output = "plot",
   statistic = "z",
-  exponentiate = T,
-  # title = "TCGA (OS)", 
-  xlab = "exp(coef)",
+  # point.args = list(size = 2, color = "blue"),
+  vline = F,
+  title = "TCGA (OS)", 
+  xlab = "Hazard ratio [exp(coef)]",
   ylab = ""
-)
+) + geom_vline(xintercept = 1, lty = 2, size = 1)
 
 p2 <- ggstatsplot::ggcoefstats(
-  x = dd_mar,
+  x = dd_mar[match(dd_tcga$term, dd_mar$term), ],
   output = "plot",  
   statistic = "z",
-  exponentiate = T,
-  # title = "Marisa (OS)", 
-  xlab = "exp(coef)",
+  vline = F,
+  title = "Marisa (OS)", 
+  xlab = "Hazard ratio [exp(coef)]",
   ylab = ""
-) 
+) + geom_vline(xintercept = 1, lty = 2, size = 1)
 
 
-# png(
-#   paste0(figPath, "OS_Comparison_ScorePairs_CoefPlot.png"),
-#   height = 2.2,
-#   width = 8,
-#   unit = "in",
-#   res = 400
-# )
+library(gridExtra)
+
+pdf(
+  paste0(figPath, "OS_Comparison_ScorePairs_CoefPlot_SignifBoth_Pairwise_ComContrasts.pdf"),
+  # height = 4,
+  height = 4.5,
+  width = 15
+)
 
 grid.arrange(p1, p2,
              ncol = 2)
-# dev.off()
 
+dev.off()
 
 
 ```
 
 
-## Extreme Score pairs
 
+### logHR - OS
 ```{r}
 
-coxMar_OS_2Comb_Extremes_sig <- 
-  read.csv(
-    paste0(marPath, "Marisa_Cox_OS_ExtremeScorePairs_significant.csv"),
-    stringsAsFactors = F,
-    check.names = F
-  )
-
-coxTCGA_OS_2Comb_Extremes_sig <-
-  read.csv(
-    paste0(tcgaPath, "TCGA_Cox_OS_ExtremeScorePairs_significant.csv"),
-    stringsAsFactors = F,
-    check.names = F
-  )
+ddLog_tcga <- dd_tcga
+ddLog_mar <- dd_mar
 
 
+ddLog_tcga$estimate <- log(ddLog_tcga$estimate)
+ddLog_tcga$conf.low <- log(ddLog_tcga$conf.low)
+ddLog_tcga$conf.high <- log(ddLog_tcga$conf.high)
 
-comExtreme <- intersect(coxTCGA_OS_2Comb_Extremes_sig$VariableName, 
-          coxMar_OS_2Comb_Extremes_sig$VariableName)
-# "CD8_Exh_Bulk--NK_Trm_Bulk" "NK_Trm_Bulk--NK_Exh_Bulk" 
+ddLog_mar$estimate <- log(ddLog_mar$estimate)
+ddLog_mar$conf.low <- log(ddLog_mar$conf.low)
+ddLog_mar$conf.high <- log(ddLog_mar$conf.high)
 
-marOnlyExtreme <- coxMar_OS_2Comb_Extremes_sig$VariableName[
-  ! coxMar_OS_2Comb_Extremes_sig$VariableName %in% 
-    coxTCGA_OS_2Comb_Extremes_sig$VariableName
-]
+p1 <- ggstatsplot::ggcoefstats(
+  x = ddLog_tcga, # for all significant terms in tcga
+  output = "plot",
+  statistic = "z",
+  # point.args = list(size = 2, color = "blue"),
+  vline = F,
+  title = "TCGA (OS)", 
+  xlab = "log(Hazard ratio)",
+  ylab = ""
+) + geom_vline(xintercept = 0, lty = 2, size = 1)
 
-tcgaOnlyExtreme <- coxTCGA_OS_2Comb_Extremes_sig$VariableName[
-  ! coxTCGA_OS_2Comb_Extremes_sig$VariableName %in% 
-    coxMar_OS_2Comb_Extremes_sig$VariableName
-]
+p2 <- ggstatsplot::ggcoefstats(
+  x = ddLog_mar[match(ddLog_tcga$term, ddLog_mar$term), ],
+  output = "plot",  
+  statistic = "z",
+  vline = F,
+  title = "Marisa (OS)", 
+  xlab = "log(Hazard ratio)",
+  ylab = ""
+) + geom_vline(xintercept = 0, lty = 2, size = 1)
 
 
+library(gridExtra)
+
+pdf(
+  paste0(figPath, "OS_Comparison_ScorePairs_CoefPlot_LogHR_SignifBoth_Pairwise_ComContrasts.pdf"),
+  # height = 4,
+  height = 4.5,
+  width = 15
+)
+
+grid.arrange(p1, p2,
+             ncol = 2)
+
+dev.off()
 ```
 
-### Extreme scores significant in both TCGA  and Marisa
-Regenerate Figure 8B.
-```{r}
 
-##----- look at the extreme scores significant in both TCGA  and Marisa
+1: H&L vs H&H
+2: L&H vs H&L + H&H
+3: L&L vs L&H + H&L + H&H
 
-selScorePair_tcga <- wide2CombLong_tcga[
-  wide2CombLong_tcga$Comb_Name %in%  comExtreme &
-    wide2CombLong_tcga$Comb_2status %in%  selComb, ]
-
-
-selScorePair_mar <-
-  wide2CombLong_mar[
-    wide2CombLong_mar$Comb_Name  %in%  comExtreme &
-      wide2CombLong_mar$Comb_2status %in%  selComb,]
-
-
-# pdf(
-#   paste0(figPath, "OS_Comparison_ExtremeScorePairs_signifBoth.pdf"),
-#   height = 5.5,
-#   width = 11.5
-# )
-
-for(i in unique(comExtreme)){
-    survival_pairPlots(
-  data1 = selScorePair_tcga,
-  data2 = selScorePair_mar,
-  strataName = i,
-  strataNameColumn = "Comb_Name",
-  strataColumn = "Comb_2status",
-  mainTitle1 = "TCGA\n",
-  mainTitle2 = "Marisa\n",
-  timeCol1 = "OS.time",
-  eventCol1 = "OS",
-  timeCol2 = "OS.time",
-  eventCol2 = "OS",
-  nColLegend = 1,
-  confInt = F,
-  ylabel1 = "OS",
-  ylabel2 = "OS",
-  CoxPval = " < 0.05",
-  cols = cols,
-  currentTheme = currentTheme
-  )
-}
-
-# dev.off()
-
-```
-
-### Extreme scores significant only in TCGA
-```{r}
-
-##----- look at the extreme scores significant only in TCGA
-
-selScorePair_tcga <- wide2CombLong_tcga[
-  wide2CombLong_tcga$Comb_Name %in%  tcgaOnlyExtreme &
-    wide2CombLong_tcga$Comb_2status %in%  selComb, ]
-
-
-selScorePair_mar <-
-  wide2CombLong_mar[
-    wide2CombLong_mar$Comb_Name  %in%  tcgaOnlyExtreme &
-      wide2CombLong_mar$Comb_2status %in%  selComb,]
-
-
-# pdf(
-#   paste0(figPath, "OS_Comparison_ExtremeScorePairs_signifOnlyTCGA.pdf"),
-#   height = 5.5,
-#   width = 11.5
-# )
-
-for(i in unique(tcgaOnlyExtreme)){
-# for(i in unique(comExtreme)){
-    survival_pairPlots(
-  data1 = selScorePair_tcga,
-  data2 = selScorePair_mar,
-  strataName = i,
-  strataNameColumn = "Comb_Name",
-  strataColumn = "Comb_2status",
-  mainTitle1 = "TCGA\n",
-  mainTitle2 = "Marisa\n",
-  timeCol1 = "OS.time",
-  eventCol1 = "OS",
-  timeCol2 = "OS.time",
-  eventCol2 = "OS",
-  nColLegend = 1,
-  confInt = F,
-  ylabel1 = "OS",
-  ylabel2 = "OS",
-  CoxPval = " < 0.05 in TCGA",
-  cols = cols,
-  currentTheme = currentTheme
-  )
-}
-
-# dev.off()
-```
-
-### Extreme scores significant only in Marisa
-```{r}
-##----- look at the extreme scores significant only in Marisa
-
-selScorePair_tcga <- wide2CombLong_tcga[
-  wide2CombLong_tcga$Comb_Name %in%  marOnlyExtreme &
-    wide2CombLong_tcga$Comb_2status %in%  selComb, ]
-
-
-selScorePair_mar <-
-  wide2CombLong_mar[
-    wide2CombLong_mar$Comb_Name  %in%  marOnlyExtreme &
-      wide2CombLong_mar$Comb_2status %in%  selComb,]
-
-
-# pdf(
-#   paste0(figPath, "OS_Comparison_ExtremeScorePairs_signifOnlyMarisa.pdf"),
-#   height = 5.5,
-#   width = 11.5
-# )
-
-for(i in unique(marOnlyExtreme)){
-    survival_pairPlots(
-  data1 = selScorePair_tcga,
-  data2 = selScorePair_mar,
-  strataName = i,
-  strataNameColumn = "Comb_Name",
-  strataColumn = "Comb_2status",
-  mainTitle1 = "TCGA\n",
-  mainTitle2 = "Marisa\n",
-  timeCol1 = "OS.time",
-  eventCol1 = "OS",
-  timeCol2 = "OS.time",
-  eventCol2 = "OS",
-  nColLegend = 1,
-  confInt = F,
-  ylabel1 = "OS",
-  ylabel2 = "OS",
-  CoxPval = " < 0.05 in Marisa",
-  cols = cols,
-  currentTheme = currentTheme
-  )
-}
-
-# dev.off()
-```
-
+                                             [,1] [,2] [,3]
+ High NK_Res_Bulk_Str & High NK_Exh_Bulk_Str   -1   -1   -1
+ High NK_Res_Bulk_Str & Low NK_Exh_Bulk_Str     1   -1   -1
+ Low NK_Res_Bulk_Str & High NK_Exh_Bulk_Str     0    2   -1
+ Low NK_Res_Bulk_Str & Low NK_Exh_Bulk_Str      0    0    3
+ 
 
 # Compare PFI (TCGA) and RFS (Marisa)
 ## Score pairs
-Significant score pairs common in both data:
-
- [1] "CD8_Res_Bulk--OXPHOS"       
- [2] "NK_Res_Bulk--CD8_Exh_Bulk"  
- [3] "NK_Res_Bulk--CD8NK_Exh_Bulk"
- [4] "NK_Res_Bulk--Epi_Thiery"    
- [5] "NK_Res_Bulk--HPX_EGF_EMT"   
- [6] "NK_Res_Bulk--Peroxisome"    
- [7] "NK_Res_Bulk--TP53_signaling"
- [8] "All_Res_Bulk--OXPHOS"       
- [9] "CD8NK_Res_Bulk--TP53_neg"   
-[10] "CD8_Exh_Bulk--NK_Res_Bulk"  
-[11] "CD8NK_Exh_Bulk--NK_Res_Bulk"
-[12] "CD8NK_Exh_Bulk--DDR" 
-
 ```{r}
-rfs_scorePairs_mar <- read.csv(paste0(marPath, "Marisa_Cox_RFS_2ScorePairs_significant.csv"), 
-         stringsAsFactors = F, 
-         check.names = F)
+rfs_scorePairs_mar <- read.csv(
+  paste0(
+    marPath,
+    # "Marisa_Cox_RFS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+    "Marisa_Cox_RFS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+  ),
+  stringsAsFactors = F,
+  check.names = F
+)
 
-pfi_scorePairs_tcga <- read.csv(paste0(tcgaPath, "TCGA_COAD_RUV_Cox_PFI_2ScorePairs_significant.csv"), 
-         stringsAsFactors = F, 
-         check.names = F)
 
-com_pfi_scorePairs <- intersect(rfs_scorePairs_mar$VariableName, pfi_scorePairs_tcga$VariableName)
+
+pfi_scorePairs_tcga <-
+  read.csv(
+    paste0(
+      tcgaPath,
+      # "TCGA_Cox_PFI_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
+      "TCGA_Cox_PFI_ExtremeScorePairs_significant_Str_pairwise6.csv"
+    ),
+    stringsAsFactors = F,
+    check.names = F
+  )
+
+
+##---- get common variable names
+# com_os_scorePairs <- intersect(os_scorePairs_tcga$VariableName, os_scorePairs_mar$VariableName)
+# com_os_scorePairs
+
+##---- get common contrasts
+comCntrasts <-
+  intersect(pfi_scorePairs_tcga$Contrast, rfs_scorePairs_mar$Contrast)
+
+com_pfi_scorePairs <-
+  unique(pfi_scorePairs_tcga$VariableName[pfi_scorePairs_tcga$Contrast %in% comCntrasts])
+
 com_pfi_scorePairs
-## on
+
+
+##--------- with covars
+# rfs_scorePairs_mar_cov <- read.csv(
+#   paste0(
+#     marPath,
+#     "Marisa_Cox_RFS_ExtremeScorePairs_significant_Str_pairwise6.csv"
+#   ),
+#   stringsAsFactors = F,
+#   check.names = F
+# )
+# 
+# pfi_scorePairs_tcga_cov <-
+#   read.csv(
+#     paste0(
+#       tcgaPath,
+#       "TCGA_Cox_PFI_ExtremeScorePairs_significant_Str_pairwise6.csv"
+#     ),
+#     stringsAsFactors = F,
+#     check.names = F
+#   )
+# 
+# comCntrasts_cov <-
+#   intersect(pfi_scorePairs_tcga_cov$Contrast, rfs_scorePairs_mar_cov$Contrast)
+# 
+# com_pfi_scorePairs_cov <-
+#   unique(pfi_scorePairs_tcga_cov$VariableName[pfi_scorePairs_tcga_cov$Contrast %in% comCntrasts_cov])
+# 
+# com_pfi_scorePairs_cov
+# 
+# 
+# 
+# com_pfi_scorePairs_cov
+#  [1] "CD8_Res_Bulk--CD8NK_Exh_Bulk" "CD8_Res_Bulk--Peroxisome"    
+#  [3] "CD8_Res_Bulk--Epi_Thiery"     "CD4_Res_Bulk--CD8NK_Exh_Bulk"
+#  [5] "NK_Res_Bulk--CD8_Exh_Bulk"    "NK_Res_Bulk--NK_Exh_Bulk"    
+#  [7] "NK_Res_Bulk--CD8NK_Exh_Bulk"  "NK_Res_Bulk--TP53_signaling" 
+#  [9] "NK_Res_Bulk--Peroxisome"      "NK_Res_Bulk--Epi_Thiery"     
+# [11] "CD8NK_Res_Bulk--NK_Exh_Bulk"  "CD8NK_Res_Bulk--Epi_Thiery"  
+# [13] "CD8_Exh_Bulk--NK_Res_Bulk"    "NK_Exh_Bulk--NK_Res_Bulk"    
+# [15] "NK_Exh_Bulk--CD8NK_Res_Bulk"  "CD8NK_Exh_Bulk--CD8_Res_Bulk"
+# [17] "CD8NK_Exh_Bulk--CD4_Res_Bulk" "CD8NK_Exh_Bulk--NK_Res_Bulk" 
+
+
+# com_pfi_scorePairs
+#  [1] "CD4_Res_Bulk--DDR"              "CD4_Res_Bulk--OXPHOS"          
+#  [3] "CD4_Res_Bulk--HPX_EGF_EMT"      "NK_Res_Bulk--NK_Exh_Bulk"      
+#  [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"    "NK_Res_Bulk--OXPHOS"           
+#  [7] "NK_Res_Bulk--HPX_EGF_EMT"       "CD8NK_Res_Bulk--NK_Exh_Bulk"   
+#  [9] "CD8NK_Res_Bulk--CD8NK_Exh_Bulk" "CD8NK_Res_Bulk--DDR"           
+# [11] "CD8_Exh_Bulk--DDR"              "CD8_Exh_Bulk--OXPHOS"          
+# [13] "CD8_Exh_Bulk--HPX_EGF_EMT"      "CD4_Exh_Bulk--DDR"             
+# [15] "CD4_Exh_Bulk--OXPHOS"           "CD4_Exh_Bulk--HPX_EGF_EMT"     
+# [17] "NK_Exh_Bulk--NK_Res_Bulk"       "NK_Exh_Bulk--CD8NK_Res_Bulk"   
+# [19] "NK_Exh_Bulk--DDR"               "NK_Exh_Bulk--OXPHOS"           
+# [21] "NK_Exh_Bulk--HPX_EGF_EMT"       "NK_Exh_Bulk--Mes_Thiery"       
+# [23] "NK_Exh_Bulk--Epi_Thiery"        "NK_Exh_Bulk--TGFb_Signaling"   
+# [25] "CD8NK_Exh_Bulk--NK_Res_Bulk"    "CD8NK_Exh_Bulk--CD8NK_Res_Bulk"
+# [27] "CD8NK_Exh_Bulk--DDR"            "CD8NK_Exh_Bulk--OXPHOS"        
+# [29] "CD8NK_Exh_Bulk--HPX_EGF_EMT"    "CD8NK_Exh_Bulk--TGFb_Signaling"
+
+## 
+# intersect(com_pfi_scorePairs_cov, com_pfi_scorePairs)
+# [1] "NK_Res_Bulk--NK_Exh_Bulk"    "NK_Res_Bulk--CD8NK_Exh_Bulk" "CD8NK_Res_Bulk--NK_Exh_Bulk"
+# [4] "NK_Exh_Bulk--NK_Res_Bulk"    "NK_Exh_Bulk--CD8NK_Res_Bulk" "CD8NK_Exh_Bulk--NK_Res_Bulk"
+
+
+## 4 common contrasts
+# intersect(comCntrasts_cov, comCntrasts)
+# [1] "Low NK_Res_Bulk & High NK_Exh_Bulk - High NK_Res_Bulk & Low NK_Exh_Bulk"      
+# [2] "Low NK_Res_Bulk & High CD8NK_Exh_Bulk - High NK_Res_Bulk & Low CD8NK_Exh_Bulk"
+# [3] "Low NK_Exh_Bulk & High NK_Res_Bulk - High NK_Exh_Bulk & Low NK_Res_Bulk"      
+# [4] "Low CD8NK_Exh_Bulk & High NK_Res_Bulk - High CD8NK_Exh_Bulk & Low NK_Res_Bulk"
 ```
 
+Common significant score pairs and contrasts across the two survival metric (OS and PFI/RFS) in both data sets:
+
+```{r}
+intersect(com_pfi_scorePairs, com_os_scorePairs)
+# [1] "CD4_Res_Bulk--CD8NK_Exh_Bulk"
+# [2] "NK_Res_Bulk--CD8_Exh_Bulk"   
+# [3] "NK_Res_Bulk--NK_Exh_Bulk"    
+# [4] "NK_Res_Bulk--CD8NK_Exh_Bulk" 
+# [5] "CD8_Exh_Bulk--NK_Res_Bulk"   
+# [6] "NK_Exh_Bulk--NK_Res_Bulk"    
+# [7] "CD8NK_Exh_Bulk--CD4_Res_Bulk"
+# [8] "CD8NK_Exh_Bulk--NK_Res_Bulk" 
+
+intersect(  intersect(pfi_scorePairs_tcga$Contrast, rfs_scorePairs_mar$Contrast),   intersect(os_scorePairs_tcga$Contrast, os_scorePairs_mar$Contrast))
+
+# [1] "Low CD4_Res_Bulk & High CD8NK_Exh_Bulk - High CD4_Res_Bulk & Low CD8NK_Exh_Bulk"
+# [2] "Low NK_Res_Bulk & High CD8_Exh_Bulk - High NK_Res_Bulk & Low CD8_Exh_Bulk"      
+# [3] "Low NK_Res_Bulk & High NK_Exh_Bulk - High NK_Res_Bulk & Low NK_Exh_Bulk"        
+# [4] "Low NK_Res_Bulk & High CD8NK_Exh_Bulk - High NK_Res_Bulk & Low CD8NK_Exh_Bulk"  
+# [5] "Low CD8_Exh_Bulk & High NK_Res_Bulk - High CD8_Exh_Bulk & Low NK_Res_Bulk"      
+# [6] "Low NK_Exh_Bulk & High NK_Res_Bulk - High NK_Exh_Bulk & Low NK_Res_Bulk"        
+# [7] "Low CD8NK_Exh_Bulk & High CD4_Res_Bulk - High CD8NK_Exh_Bulk & Low CD4_Res_Bulk"
+# [8] "Low CD8NK_Exh_Bulk & High NK_Res_Bulk - High CD8NK_Exh_Bulk & Low NK_Res_Bulk" 
+```
 
 ### Plot survival
 Generate Figure 7C, along with survival curves for other significant score pairs.
 ```{r}
 library(gridExtra)
-wide2CombLong_tcga <- readRDS(paste0(tcgaPath, "TCGA_Survival_PFI_ScoreExpr_wide.RDS"))
-# wide2CombLong_tcga$PFI.time <- wide2CombLong_tcga$PFI.time/12
+wide2CombLong_tcga <- readRDS(paste0(tcgaPath, "TCGA_Survival_PFI_ScoreExpr_wide_Str.RDS"))
+wide2CombLong_tcga$PFI.time <- wide2CombLong_tcga$PFI.time/30
 
-wide2CombLong_mar <- readRDS(paste0(marPath, "Marisa_Survival_RFS_ScoreExpr_wide.RDS"))
+wide2CombLong_mar <- readRDS(paste0(marPath, "Marisa_Survival_RFS_ScoreExpr_wide_Str.RDS"))
 
 selScorePair_tcga <- wide2CombLong_tcga[
   wide2CombLong_tcga$Comb_Name  %in% 
@@ -480,17 +596,19 @@ selScorePair_mar <- wide2CombLong_mar[
   wide2CombLong_mar$Comb_Name  %in% 
     com_pfi_scorePairs, ]
 
-# pdf(
-#   paste0(figPath, "PFI_RFS_Comparison_ScorePairs_signifBoth.pdf"),
-#   height = 6.5,
-#   width = 12
-# )
 
-for(i in com_pfi_scorePairs){
+
+pdf(
+  paste0(figPath, "PFI_RFS_Comparison_ScorePairs_signifBoth_Str_Pairwise_ComContrasts.pdf"),
+  height = 6.5,
+  width = 12
+)
+
+for(j in com_pfi_scorePairs){
   survival_pairPlots(
   data1 = selScorePair_tcga,
   data2 = selScorePair_mar,
-  strataName = i,
+  strataName = j,
   strataNameColumn = "Comb_Name",
   strataColumn = "Comb_2status",
   mainTitle1 = "TCGA\n",
@@ -509,38 +627,50 @@ for(i in com_pfi_scorePairs){
   )
 }
   
-# dev.off()
+dev.off()
 
 ```
 
 ### Coef plot
 Generate Figure 7A.
 ```{r}
+cox_pfi_2Comb_sig_tcga <- pfi_scorePairs_tcga
 
-cox_pfi_2Comb_sig_tcga <- read.csv(
-  paste0(
-    tcgaPath,
-    "TCGA_COAD_RUV_Cox_PFI_2ScorePairs_significant.csv"
-  ),
-  stringsAsFactors = F,
-  check.names = F
+## subset to common ones
+cox_pfi_2Comb_sig_tcga <- cox_pfi_2Comb_sig_tcga[cox_pfi_2Comb_sig_tcga$Contrast %in% comCntrasts, ]
+
+cox_pfi_2Comb_sig_tcga$Contrast <- gsub(
+  "High", "H", cox_pfi_2Comb_sig_tcga$Contrast
 )
 
-cox_rfs_2Comb_sig_mar <- read.csv(
-  paste0(
-    marPath,
-    "Marisa_Cox_RFS_2ScorePairs_significant.csv"
-  ),
-  stringsAsFactors = F,
-  check.names = F
+cox_pfi_2Comb_sig_tcga$Contrast <- gsub(
+  "Low", "L", cox_pfi_2Comb_sig_tcga$Contrast
 )
 
-comVariables <- intersect(cox_rfs_2Comb_sig_mar$VariableName, cox_pfi_2Comb_sig_tcga$VariableName)
 
-dd_tcga <- cox_pfi_2Comb_sig_tcga[
-  cox_pfi_2Comb_sig_tcga$VariableName %in%  comVariables,
+
+
+cox_rfs_2Comb_sig_mar <- rfs_scorePairs_mar
+
+## subset to common ones
+cox_rfs_2Comb_sig_mar <- cox_rfs_2Comb_sig_mar[cox_rfs_2Comb_sig_mar$Contrast %in% comCntrasts, ]
+
+
+cox_rfs_2Comb_sig_mar$Contrast <- gsub(
+  "High", "H", cox_rfs_2Comb_sig_mar$Contrast
+)
+
+cox_rfs_2Comb_sig_mar$Contrast <- gsub(
+  "Low", "L", cox_rfs_2Comb_sig_mar$Contrast
+)
+
+
+
+
+
+dd_tcga <- cox_pfi_2Comb_sig_tcga[,
                                  c("VariableName",
-                                   "variable",
+                                   "Contrast",
                                    "exp(coef)",
                                    "lower .95",
                                    "upper .95",
@@ -549,10 +679,9 @@ dd_tcga <- cox_pfi_2Comb_sig_tcga[
 
 
 
-dd_mar <- cox_rfs_2Comb_sig_mar[
-  cox_rfs_2Comb_sig_mar$VariableName  %in%  comVariables,
+dd_mar <- cox_rfs_2Comb_sig_mar[,
                                  c("VariableName",
-                                   "variable",
+                                   "Contrast",
                                    "exp(coef)",
                                    "lower .95",
                                    "upper .95",
@@ -568,193 +697,102 @@ colnames(dd_tcga) <- colnames(dd_mar) <-
     "z",
     "p-value")
 
-## remove reciprocal duplicated term
-dd_tcga <- dd_tcga[
-  ! dd_tcga$term  %in% "High CD8NK_Exh_Bulk & Low DDR", ]
-
-dd_tcga <- dd_tcga[
-  ! dd_tcga$term  %in% "Low NK_Res_Bulk & High CD8NK_Exh_Bulk", ]
-# 
-# ## remove reciprocal duplicated term
-dd_mar <- dd_mar[
-  ! dd_mar$term  %in% "High NK_Res_Bulk & Low CD8NK_Exh_Bulk", ]
 
 
 dd_tcga <- dd_tcga[order(dd_tcga$estimate), ]
 dd_mar <- dd_mar[order(dd_mar$estimate), ]
 
 
+
 p1 <- ggstatsplot::ggcoefstats(
-  x = dd_tcga,
+  x = dd_tcga, # for all significant terms in tcga
   output = "plot",
   statistic = "z",
-  exponentiate = T,
-  # title = "TCGA (OS)", 
-  xlab = "exp(coef)",
+  # point.args = list(size = 2, color = "blue"),
+  vline = F,
+  title = "TCGA (PFI)", 
+  xlab = "Hazard ratio [exp(coef)]",
   ylab = ""
-)
-
-
-# rownames(dd_mar) <- dd_mar$VariableName
+) + geom_vline(xintercept = 1, lty = 2, size = 1)
 
 p2 <- ggstatsplot::ggcoefstats(
-  # x = dd_mar[unique(dd_tcga$VariableName), ],
-  x = dd_mar,
+  x = dd_mar[match(dd_tcga$term, dd_mar$term), ],
   output = "plot",  
   statistic = "z",
-  exponentiate = T,
-  # title = "Marisa (OS)", 
-  xlab = "exp(coef)",
+  vline = F,
+  title = "Marisa (RFS)", 
+  xlab = "Hazard ratio [exp(coef)]",
   ylab = ""
-) 
+) + geom_vline(xintercept = 1, lty = 2, size = 1)
 
 
-# png(
-#   paste0(figPath, "PFI_Comparison_ScorePairs_CoefPlot.png"),
-#   height = 3,
-#   width = 8,
-#   unit = "in",
-#   res = 400
-# )
+pdf(
+  paste0(figPath, "PFI_RFS_Comparison_ScorePairs_CoefPlot_SignifBoth_Pairwise_ComContrasts.pdf"),
+  height = 6,
+  # height = 4,
+  width = 15
+)
 
 grid.arrange(p1, p2,
              ncol = 2)
-# dev.off()
+
+dev.off()
+
+
 
 ```
 
-
-
-
-## Extreme Score pairs
-There is no significant extreme scores that relates to only Marisa. Therea re some that are common and some that are specific to TCGA.
+### logHR - PFI
 ```{r}
-
-coxMar_rfs_2Comb_Extremes_sig <- read.csv(
-          paste0(marPath, "Marisa_Cox_RFS_ExtremeScorePairs_significant.csv"), 
-          stringsAsFactors = F, check.names = F)
-
-coxTCGA_pfi_2Comb_Extremes_sig <- read.csv(
-          paste0(tcgaPath, "TCGA_Cox_PFI_ExtremeScorePairs_significant.csv"), 
-          stringsAsFactors = F, check.names = F)
+ddLog_tcga <- dd_tcga
+ddLog_mar <- dd_mar
 
 
+ddLog_tcga$estimate <- log(ddLog_tcga$estimate)
+ddLog_tcga$conf.low <- log(ddLog_tcga$conf.low)
+ddLog_tcga$conf.high <- log(ddLog_tcga$conf.high)
 
-comExtreme <- intersect(coxTCGA_pfi_2Comb_Extremes_sig$VariableName, 
-          coxMar_rfs_2Comb_Extremes_sig$VariableName)
-# "CD8_Exh_Bulk--NK_Res_Bulk" "NK_Res_Bulk--NK_Exh_Bulk" 
+ddLog_mar$estimate <- log(ddLog_mar$estimate)
+ddLog_mar$conf.low <- log(ddLog_mar$conf.low)
+ddLog_mar$conf.high <- log(ddLog_mar$conf.high)
+
+p1 <- ggstatsplot::ggcoefstats(
+  x = ddLog_tcga, # for all significant terms in tcga
+  output = "plot",
+  statistic = "z",
+  # point.args = list(size = 2, color = "blue"),
+  vline = F,
+  title = "TCGA (PFI)", 
+  xlab = "log(Hazard ratio)",
+  ylab = ""
+) + geom_vline(xintercept = 0, lty = 2, size = 1)
+
+p2 <- ggstatsplot::ggcoefstats(
+  x = ddLog_mar[match(ddLog_tcga$term, ddLog_mar$term), ],
+  output = "plot",  
+  statistic = "z",
+  vline = F,
+  title = "Marisa (RFS)", 
+  xlab = "log(Hazard ratio)",
+  ylab = ""
+) + geom_vline(xintercept = 0, lty = 2, size = 1)
 
 
-tcgaOnlyExtreme <- coxTCGA_pfi_2Comb_Extremes_sig$VariableName[
-  ! coxTCGA_pfi_2Comb_Extremes_sig$VariableName %in% 
-    coxMar_rfs_2Comb_Extremes_sig$VariableName
-]
+library(gridExtra)
 
-# [1] "CD8_Res_Bulk--CD8_Exh_Bulk"     "CD4_Res_Bulk--NK_Exh_Bulk"      "CD8_Res_Bulk--NK_Exh_Bulk"     
-# [4] "CD4_Res_Bulk--CD8_Exh_Bulk"     "CD4_Res_Bulk--CD4_Exh_Bulk"     "CD8NK_Exh_Bulk--CD8NK_Res_Bulk"
+pdf(
+  paste0(figPath, "PFI_RFS_Comparison_ScorePairs_CoefPlot_LogHR_SignifBoth_Pairwise_ComContrasts.pdf"),
+  # height = 4,
+  height = 4.5,
+  width = 15
+)
 
+grid.arrange(p1, p2,
+             ncol = 2)
 
+dev.off()
 ```
 
-### Extreme scores significant in both data 
-Generate Figure 8C and Suppl Figure 14.
-```{r}
-
-##----- look at the extreme scores significant in both TCGA  and Marisa
-
-selScorePair_tcga <- wide2CombLong_tcga[
-  wide2CombLong_tcga$Comb_Name %in%  comExtreme &
-    wide2CombLong_tcga$Comb_2status %in%  selComb, ]
-
-
-selScorePair_mar <-
-  wide2CombLong_mar[
-    wide2CombLong_mar$Comb_Name  %in%  comExtreme &
-      wide2CombLong_mar$Comb_2status %in%  selComb,]
-
-
-# pdf(
-#   paste0(figPath, "PFI_RFS_Comparison_ExtremeScorePairs_SignifBoth.pdf"),
-#   height = 5.5,
-#   width = 11.5
-# )
-
-for(i in unique(comExtreme)){
-    survival_pairPlots(
-  data1 = selScorePair_tcga,
-  data2 = selScorePair_mar,
-  strataName = i,
-  strataNameColumn = "Comb_Name",
-  strataColumn = "Comb_2status",
-  mainTitle1 = "TCGA\n",
-  mainTitle2 = "Marisa\n",
-  timeCol1 = "PFI.time",
-  eventCol1 = "PFI",
-  timeCol2 = "RFS.time",
-  eventCol2 = "RFS",
-  nColLegend = 1,
-  confInt = F,
-  ylabel1 = "PFI",
-  ylabel2 = "RFS",
-  CoxPval = " < 0.05",
-  cols = cols,
-  currentTheme = currentTheme
-  )
-}
-
-# dev.off()
-
-
-```
-
-### Extreme scores significant in TCGA only
-```{r}
-
-selScorePair_tcga <- wide2CombLong_tcga[
-  wide2CombLong_tcga$Comb_Name %in%  tcgaOnlyExtreme &
-    wide2CombLong_tcga$Comb_2status %in%  selComb, ]
-
-
-selScorePair_mar <-
-  wide2CombLong_mar[
-    wide2CombLong_mar$Comb_Name  %in%  tcgaOnlyExtreme &
-      wide2CombLong_mar$Comb_2status %in%  selComb,]
-
-# 
-# pdf(
-#   paste0(figPath, "PFI_RFS_Comparison_ExtremeScorePairs_SignifOnlyTCGA.pdf"),
-#   height = 5.5,
-#   width = 11.5
-# )
-
-for(i in unique(tcgaOnlyExtreme)){
-    survival_pairPlots(
-  data1 = selScorePair_tcga,
-  data2 = selScorePair_mar,
-  strataName = i,
-  strataNameColumn = "Comb_Name",
-  strataColumn = "Comb_2status",
-  mainTitle1 = "TCGA\n",
-  mainTitle2 = "Marisa\n",
-  timeCol1 = "PFI.time",
-  eventCol1 = "PFI",
-  timeCol2 = "RFS.time",
-  eventCol2 = "RFS",
-  nColLegend = 1,
-  confInt = F,
-  ylabel1 = "PFI",
-  ylabel2 = "RFS",
-  CoxPval = " < 0.05 in TCGA",
-  cols = cols,
-  currentTheme = currentTheme
-  )
-}
-
-# dev.off()
-```
-
-
-      
 # Session information
 Here are the list of tools and packages (along with their versions) used in this document. 
 ```{r}

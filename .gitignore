@@ -2,8 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
-
+  
 figure/
+
+script/Archive/
 script/ReadSignatures.R
 script/ReadSignatures_initial.R
 script/boxplot_vertical_ggplot.R
@@ -16,6 +18,8 @@ data/James_GutAtlas/
 data/GSE146771_Zhang_CRC/
 data/TCGA/DontPush/
 data/Marisa/DontPush/
+data/Bian/
+data/Signatures_literature/CIBERSORT/
 
 output/CD4/DontPush/
 output/CD8/DontPush/
@@ -23,7 +27,10 @@ output/NK/DontPush/
 output/CompareSigs/DontPush/
 output/deAndrade/
 output/CompareSurvival/
+output/TCGA/
+output/Marisa/
 
+report/Archive/
 report/CD4_ResExh_CRC_files/
 report/CD4_ResExh_CRC_cache/
 report/CD8_ResExh_CRC_files/
@@ -41,10 +48,13 @@ report/NKTest_ResExh_CRC_files/
 report/Compare_Signatures_cache/
 report/Compare_Signatures_files/
 
-figure/CompareSigs/
-figure/TCGA/
-output/TCGA/
+report/RespReviewers.Rmd
+report/Bian_CRC_sc.Rmd
+report/Bassez_BrCr_antiPD1.Rmd
 
+
+
+presentation/
 
 report/*.html
 *.Rproj

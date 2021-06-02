@@ -563,10 +563,24 @@ print(
 
 ```
 
+```{r}
+png(
+  paste0(figPath, "UMAP_Tissue.png"),
+  height = 800,
+  width = 950,
+  res = 200
+)
+DimPlot(cy, group.by = "Tissue") + scale_colour_manual(values = brewer.pal(4, "Dark2"))
+dev.off()
+```
 
 ### Save final data
 ```{r}
 # saveRDS(cy, paste0(outPath, "DontPush/deAndrade_CY129_Seurat_SCTransform_filteredCells_ScoreUMAP.RDS"))
+
+cy <- readRDS(
+  paste0(outPath, "DontPush/deAndrade_CY129_Seurat_SCTransform_filteredCells_ScoreUMAP.RDS")
+)
 ```
 
 # Session information
