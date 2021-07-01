@@ -316,7 +316,7 @@ for(i in sigsResExh) {
 dev.off()
 ```
 
-We also generate a heatmap of the correlation values between Res/Exh scores and several immune signature scores from CIBERSORT. 
+We also generate a heatmap of the correlation values between Res/Exh scores and several immune signature scores from CIBERSORT. This generates Figure S14 - left panel.
 ```{r}
 
 corData <- data.frame(matrix(nrow = 24, ncol = 0))
@@ -583,7 +583,7 @@ imSigs <- scoreNames[grepl("Res_", scoreNames) |
 ```
 
 ### Boxplots stratified by MSI, CMS and tumour location
-These reproduces Figure 4A and 4B (left panels) and Suppl Figure 8 (left panel). 
+These reproduces Figure 4A and 4B (left panels) and Suppl Figure 13 (left panel). 
 ```{r, fig.height = 5, fig.width = 6}
 library(ggsignif)
 
@@ -1020,8 +1020,8 @@ cox_OS_Score_3groups_AgeStage_sig
 ```
 
 
-### OS: Score Pairs + covariates
-Here, we examine if stratifying samples based on any two signature scores are associated with survival outcome (by considering the 4 covariates).
+## Data preparation for: Score Pairs + covariates
+Here, we examine if stratifying samples based on any two signature scores are associated with survival outcome (by considering the 4 covariates). Before that we need to prepare the data by adding new columns of score pairs. We make score pairs by combining Exh or Res signatures with other signatures from the literature (including some cancer related signatures), as well as by combining Exh and Res signatures together...
 ```{r}
 
 trmSigs <- c(
@@ -1040,19 +1040,6 @@ exhSigs <- c(
   "CD8NK_Exh_Bulk"
   )
 
-
-# canSigs <-
-#   c(
-#     "DDR",
-#     "OXPHOS",
-#     "TP53_signaling",
-#     "HPX_EGF_EMT",
-#     "Peroxisome",
-#     "Mes_Thiery",
-#     "Epi_Thiery",
-#     "IL6_JAK_STAT3",
-#     "TGFb_Signaling"
-#   )
 
 canSigs <-
   c(
@@ -1103,30 +1090,6 @@ for(s in exhSigs){
 
 
 
-##---- if checking the Str sigs
-# 
-# exhStrCan <- c(exhSigs_Str, canSigs)
-# trmStrCan <- c(trmSigs_Str, canSigs)
-# 
-# 
-# for(s in trmSigs_Str){
-#   for(e in exhStrCan){
-#     currentColumn <- paste(s, e, sep = "--")
-#     wide2Comb[, currentColumn] <- paste(wide2Comb[, s], s , "&",
-#                                       wide2Comb[, e], e)
-#   }
-# } 
-#   
-# for(s in exhSigs_Str){
-#   for(e in trmStrCan){
-#     currentColumn <- paste(s, e, sep = "--")
-#     wide2Comb[, currentColumn] <- paste(wide2Comb[, s], s , "&",
-#                                       wide2Comb[, e], e)
-#   }
-# }  
- 
-##--------
-
 
 wide2Comb[, "CD8_Res_Bulk--CD4_Res_Bulk"] <-
   paste(wide2Comb[, "CD8_Res_Bulk"],
@@ -1171,7 +1134,6 @@ wide2Comb[, "CD4_Exh_Bulk--NK_Exh_Bulk"] <-
         wide2Comb[, "NK_Exh_Bulk"],
         "NK_Exh_Bulk")
 
- 
 
 ```
 
@@ -1200,11 +1162,10 @@ saveRDS(wide2CombLong, paste0(outPath, "TCGA_Survival_OS_ScoreExpr_wide_Str.RDS"
 
 
 ## Pairwise comparisons with covariates
-6 tests
+We peform Cox models with covariates for all the pairwise comparisons between quadrants of the score landscape plots for each score pair.
 ```{r}
 # covarColumns <- c("Age", "Stage", "CMS", "MSI_TCGAbiolink_annot")
 
-##------- IF NOT USING THE SELECTED COMBINATION ABOVE:
 wide2CombLong$Sig1 <- sapply(wide2CombLong$Comb_Name, function(x){
   unlist(strsplit(x, "--"))[1]
 })
@@ -1306,42 +1267,7 @@ write.csv(cox_OS_2Comb_Extremes6_sig,
           row.names = F)
 ```
 
-
-
-CD8NK_Exh_Bulk--NK_Res_Bulk:
-High CD8NK_Exh_Bulk & Low NK_Res_Bulk vs Low CD8NK_Exh_Bulk & High NK_Res_Bulk
-
-```{r}
-# cc <- "CD8NK_Exh_Bulk--NK_Res_Bulk"
-# 
-# currentCox <- cox_OS_2Comb_Extremes6_sig[
-#   cox_OS_2Comb_Extremes6_sig$VariableName == cc , ]
-# 
-# annot <-
-#   wide2CombLong[wide2CombLong$Comb_Name == cc &
-#                 wide2CombLong$Comb_2status %in% c(
-#                   "High CD8NK_Exh_Bulk & Low NK_Res_Bulk", "Low CD8NK_Exh_Bulk & High NK_Res_Bulk"), ]
-#   
-# 
-# 
-# cc <- "CD8_Exh_Bulk--NK_Res_Bulk"
-# ## Low CD8_Exh_Bulk & High NK_Res_Bulk - High CD8_Exh_Bulk & Low NK_Res_Bulk
-# 
-# currentCox <- cox_OS_2Comb_Extremes6_sig[
-#   cox_OS_2Comb_Extremes6_sig$VariableName == cc , ]
-# 
-# annot <-
-#   wide2CombLong[wide2CombLong$Comb_Name == cc &
-#                 wide2CombLong$Comb_2status %in% c(
-#                   "High CD8_Exh_Bulk & Low NK_Res_Bulk", "Low CD8_Exh_Bulk & High NK_Res_Bulk"), ]
-# 
-# 
-# table(annot$Comb_2status, annot$OS) 
-# table(annot$Comb_2status, annot$MSI_TCGAbiolink_annot)
-# table(annot$Comb_2status, annot$CMS)
-# table(annot$Comb_2status, annot$Stage)
-```
-
+Generate survival curves for teh significant results; these include Supp. Figure S21. 
 ```{r}
 
 cox_OS_2Comb_Extremes6_sig$Comparison <- gsub("High", "H", cox_OS_2Comb_Extremes6_sig$Comparison)
@@ -1574,7 +1500,6 @@ scoreAnnot <- scoreAnnot %>%
 ### PFI: Score + covariates
 We use our custom function (coxph_multitest) for performing coxph test on several signatures at the same time. We perform the analysis twice, once by grouping samples into two group based on Median scores, and once by grouping them into 3 groups based on the top and bottom 35%-tile. 
 
-
 * Significant signature scores associated with PFI when considering 2 groups: TGFb_Signaling, NK_Res_Bulk.
 * Significant signature scores associated with PFI when considering 3 groups: CD8_Res_Bulk
 ```{r}
@@ -1633,7 +1558,7 @@ cox_PFI_Score_3groups_sig
 # )
 ```
 
-Plot survival for the significant score (NK_Res_Bulk and TGFb signaling) - related to Suppl Figure 13.
+
 ```{r}
 annFilt$PFI.time <- annFilt$PFI.time/30
 ```
@@ -1673,7 +1598,7 @@ for (s in unique(cox_PFI_Score_2groups_sig$VariableName)) {
 dev.off()
 ```
 
-### PFI: Score Pairs + covariates
+Data preparation for PFI: Score Pairs + covariates
 ```{r}
 
 trmSigs <- c(
@@ -1802,7 +1727,7 @@ saveRDS(wide2CombLong, paste0(outPath, "TCGA_Survival_PFI_ScoreExpr_wide_Str.RDS
 ```
 
 ## Pairwise comparisons with covariates
-6 comparisons
+We peform Cox models with covariates for all the pairwise comparisons between quadrants of the score landscape plots for each score pair.
 ```{r}
 
 wide2CombLong$Sig1 <- sapply(wide2CombLong$Comb_Name, function(x){
@@ -1900,7 +1825,6 @@ for(i in 1:nrow(cox_PFI_2Comb_Extremes6_sig)) {
   }
 }  
 
-
 write.csv(cox_PFI_2Comb_Extremes6_sig, 
           paste0(outPath, "TCGA_Cox_PFI_ExtremeScorePairs_significant_Str_pairwise6.csv"), 
           row.names = F)
@@ -1909,26 +1833,26 @@ write.csv(cox_PFI_2Comb_Extremes6_sig,
 
 
 ```{r}
-cc <- "CD8NK_Exh_Bulk--NK_Res_Bulk"
-
-currentCox <- cox_PFI_2Comb_Extremes6_sig[
-  cox_PFI_2Comb_Extremes6_sig$VariableName == cc , ]
-
-annot <-
-  wide2CombLong[wide2CombLong$Comb_Name == cc &
-                wide2CombLong$Comb_2status %in% c(
-                  "High CD8NK_Exh_Bulk & Low NK_Res_Bulk", "Low CD8NK_Exh_Bulk & High NK_Res_Bulk"), ]
- 
- 
-table(annot$Comb_2status, annot$OS) 
-table(annot$Comb_2status, annot$MSI_TCGAbiolink_annot)
-table(annot$Comb_2status, annot$CMS)
-table(annot$Comb_2status, annot$Stage)
+# cc <- "CD8NK_Exh_Bulk--NK_Res_Bulk"
+# 
+# currentCox <- cox_PFI_2Comb_Extremes6_sig[
+#   cox_PFI_2Comb_Extremes6_sig$VariableName == cc , ]
+# 
+# annot <-
+#   wide2CombLong[wide2CombLong$Comb_Name == cc &
+#                 wide2CombLong$Comb_2status %in% c(
+#                   "High CD8NK_Exh_Bulk & Low NK_Res_Bulk", "Low CD8NK_Exh_Bulk & High NK_Res_Bulk"), ]
+#  
+#  
+# table(annot$Comb_2status, annot$OS) 
+# table(annot$Comb_2status, annot$MSI_TCGAbiolink_annot)
+# table(annot$Comb_2status, annot$CMS)
+# table(annot$Comb_2status, annot$Stage)
 ```
 
 
 
-
+Survival curves for significant results.
 ```{r}
 # wide2CombLong$PFI.time <- wide2CombLong$PFI.time/30
 cox_PFI_2Comb_Extremes6_sig$Comparison <- gsub("High", "H", cox_PFI_2Comb_Extremes6_sig$Comparison)
@@ -2006,10 +1930,13 @@ dev.off()
 
 
 ### Selected scatterplots
-**Scatterplot of CD8NK_Exh_Bulk vs TGFb_Signaling, coloured by CMS subtypes (Figure 6B, left scatterplot)**
+Generate scatterplots for selected score pairs - Figures 6A, 7A, Supp. Figure S22A.
+
+
+**Scatterplot of CD8NK_Exh_Bulk vs TGFb_Signaling, coloured by CMS subtypes**
 ```{r, fig.height = 4.7, fig.width = 4.3}
 
-x <- "CD8NK_Exh_Bulk"
+x <- "NK_Exh_Bulk"
 y <- "TGFb_Signaling"
 
 d <- currentAnnot_ruv %>%
@@ -2052,7 +1979,7 @@ print(
 
 ```
 
-**Scatterplot of CD8NK_Exh_Bulk vs NK_Res_Bulk, coloured by CMS subtypes (Figure 7B, left scatterplot)**
+**Scatterplot of CD8NK_Exh_Bulk vs NK_Res_Bulk, coloured by CMS subtypes**
 ```{r, fig.height = 4.7, fig.width = 4.3}
 x <- "CD8NK_Exh_Bulk"
 y <- "NK_Res_Bulk"
@@ -2098,7 +2025,7 @@ print(
 ```
 
 
-**Scatterplot of CD8NK_Exh_Bulk vs NK_Res_Bulk, coloured by CMS subtypes (Figure 8A, left scatterplot)**
+**Scatterplot of CD8NK_Exh_Bulk vs NK_Res_Bulk, coloured by CMS subtypes**
 ```{r, fig.height = 4.7, fig.width = 4.3}
 x <- "NK_Res_Bulk"
 y <- "NK_Exh_Bulk"
@@ -2383,7 +2310,7 @@ sigMut <- conseq_model_adjPvalCols %>%
 # )
 ```
 
-Subset data to genes that are significantly associated with any of the Res_Bulk and Exh_Bulk scores. This is related to Suppl Table 4.
+Subset data to genes that are significantly associated with any of the Res_Bulk and Exh_Bulk scores. This is related to Suppl Table 8.
 ```{r}
 ## filter for significant ones: 4475 genes
 conseq_model_signif <- conseq_model_adjPval %>% 
@@ -2425,6 +2352,10 @@ conseq_model_signifCols <- conseq_model_signifCols %>%
 #     sep = "\t"
 #   )
 
+  # All_Exh_Bulk   All_Res_Bulk   CD4_Exh_Bulk   CD4_Res_Bulk   CD8_Exh_Bulk 
+  #         1980            840           1308             92           2150 
+  # CD8_Res_Bulk CD8NK_Exh_Bulk CD8NK_Res_Bulk    NK_Exh_Bulk    NK_Res_Bulk 
+  #          928           2744           1031           3371            832 
 ```
 
 
@@ -2881,7 +2812,7 @@ trmOnly_EN <- row.names(en_trm)[! row.names(en_trm) %in% row.names(en_exh)]
 # [61] "DCBLD1"    "SNTG1"     "PCDHGB3"    
 ```
 
-Export a table containing all the predictive variables for NK_Res_Bulk and NK_Exh_Bulk scores (Suppl Table 6). 
+Export a table containing all the predictive variables for NK_Res_Bulk and NK_Exh_Bulk scores (Suppl Table 10). 
 
 ```{r}
 enNK <-
@@ -2928,7 +2859,7 @@ write.table(
 ```
 
 ### Boxplot of Elastic Net results
-We generate boxplots of NK_Exh_Bulk and NK_Res_Bulk scores stratified by mutations status (Mut vs WT) for genes that are predictive of both signature scores (Suppl Figure 10), for genes that are predictive of only NK_Exh_Bulk scores (Suppl Table 11), and for those that are predictive of only NK_Res_Bulk scores (Suppl Table 12). 
+We generate boxplots of NK_Exh_Bulk and NK_Res_Bulk scores stratified by mutations status (Mut vs WT) for genes that are predictive of both signature scores (Suppl Figure S16), for genes that are predictive of only NK_Exh_Bulk scores (Suppl Figure S17), and for those that are predictive of only NK_Res_Bulk scores (Suppl Figure S18). 
 ```{r}
 rmCols <- c(
   "Row.names",

@@ -85,21 +85,7 @@ source("../script/survival_plot.R")
 
 # Compare OS 
 ## Score pairs
-Three common significant score pairs are below.
- [1] "CD4_Res_Bulk--CD8_Exh_Bulk"    
- [2] "CD4_Res_Bulk--CD8NK_Exh_Bulk"  
- [3] "NK_Res_Bulk--CD8_Exh_Bulk"     
- [4] "NK_Res_Bulk--NK_Exh_Bulk"      
- [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"   
- [6] "CD8_Exh_Bulk--CD4_Res_Bulk"    
- [7] "CD8_Exh_Bulk--NK_Res_Bulk"     
- [8] "NK_Exh_Bulk--NK_Res_Bulk"      
- [9] "NK_Exh_Bulk--IL6_JAK_STAT3"    
-[10] "NK_Exh_Bulk--TGFb_Signaling"   
-[11] "CD8NK_Exh_Bulk--CD4_Res_Bulk"  
-[12] "CD8NK_Exh_Bulk--NK_Res_Bulk"   
-[13] "CD8NK_Exh_Bulk--IL6_JAK_STAT3" 
-[14] "CD8NK_Exh_Bulk--TGFb_Signaling"
+
 ```{r}
 ##---- without covars
 os_scorePairs_mar <- read.csv(
@@ -130,87 +116,13 @@ comCntrasts <-
 com_os_scorePairs <-
   unique(os_scorePairs_tcga$VariableName[os_scorePairs_tcga$Contrast %in% comCntrasts])
 com_os_scorePairs
-# 
-# 
-# ##--------- with covars
-# os_scorePairs_mar_cov <- read.csv(
-#   paste0(
-#     marPath,
-#     "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
-#     # "Marisa_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
-#   ),
-#   stringsAsFactors = F,
-#   check.names = F
-# )
-# 
-# os_scorePairs_tcga_cov <-
-#   read.csv(
-#     paste0(
-#       tcgaPath,
-#       "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6.csv"
-#       # "TCGA_Cox_OS_ExtremeScorePairs_significant_Str_pairwise6_noCovars.csv"
-#     ),
-#     stringsAsFactors = F,
-#     check.names = F
-#   )
-# 
-# comCntrasts_cov <-
-#   intersect(os_scorePairs_tcga_cov$Contrast, os_scorePairs_mar_cov$Contrast)
-# 
-# com_os_scorePairs_cov <-
-#   unique(os_scorePairs_tcga_cov$VariableName[os_scorePairs_tcga_cov$Contrast %in% comCntrasts_cov])
-# 
-# com_os_scorePairs_cov
-# 
-# 
-# 
-# com_os_scorePairs_cov
-#  [1] "CD4_Res_Bulk--CD8_Exh_Bulk"     "CD4_Res_Bulk--CD8NK_Exh_Bulk"  
-#  [3] "NK_Res_Bulk--CD8_Exh_Bulk"      "NK_Res_Bulk--NK_Exh_Bulk"      
-#  [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"    "CD8_Exh_Bulk--CD4_Res_Bulk"    
-#  [7] "CD8_Exh_Bulk--NK_Res_Bulk"      "NK_Exh_Bulk--NK_Res_Bulk"      
-#  [9] "NK_Exh_Bulk--IL6_JAK_STAT3"     "NK_Exh_Bulk--TGFb_Signaling"   
-# [11] "CD8NK_Exh_Bulk--CD4_Res_Bulk"   "CD8NK_Exh_Bulk--NK_Res_Bulk"   
-# [13] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
-
-
-# com_os_scorePairs
-#  [1] "CD8_Res_Bulk--OXPHOS"           "CD4_Res_Bulk--OXPHOS"          
-#  [3] "NK_Res_Bulk--NK_Exh_Bulk"       "NK_Res_Bulk--OXPHOS"           
-#  [5] "CD8NK_Res_Bulk--NK_Exh_Bulk"    "NK_Exh_Bulk--NK_Res_Bulk"      
-#  [7] "NK_Exh_Bulk--CD8NK_Res_Bulk"    "NK_Exh_Bulk--DDR"              
-#  [9] "NK_Exh_Bulk--OXPHOS"            "NK_Exh_Bulk--HPX_EGF_EMT"      
-# [11] "NK_Exh_Bulk--Peroxisome"        "NK_Exh_Bulk--Mes_Thiery"       
-# [13] "NK_Exh_Bulk--Epi_Thiery"        "NK_Exh_Bulk--IL6_JAK_STAT3"    
-# [15] "NK_Exh_Bulk--TGFb_Signaling"    "CD8NK_Exh_Bulk--DDR"           
-# [17] "CD8NK_Exh_Bulk--OXPHOS"         "CD8NK_Exh_Bulk--HPX_EGF_EMT"   
-# [19] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
-
-## 14 covs, and 20 noCovs --> 6 common
-# intersect(com_os_scorePairs_cov, com_os_scorePairs)
-# [1] "NK_Res_Bulk--NK_Exh_Bulk"       "NK_Exh_Bulk--NK_Res_Bulk"      
-# [3] "NK_Exh_Bulk--IL6_JAK_STAT3"     "NK_Exh_Bulk--TGFb_Signaling"   
-# [5] "CD8NK_Exh_Bulk--IL6_JAK_STAT3"  "CD8NK_Exh_Bulk--TGFb_Signaling"
-
-
-## 4 common contrasts
-# intersect(comCntrasts_cov, comCntrasts)
-# [1] "Low NK_Res_Bulk & High NK_Exh_Bulk - High NK_Res_Bulk & Low NK_Exh_Bulk"          
-# [2] "Low NK_Exh_Bulk & High NK_Res_Bulk - High NK_Exh_Bulk & Low NK_Res_Bulk"          
-# [3] "Low NK_Exh_Bulk & High TGFb_Signaling - High NK_Exh_Bulk & Low TGFb_Signaling"    
-# [4] "Low CD8NK_Exh_Bulk & High IL6_JAK_STAT3 - High CD8NK_Exh_Bulk & Low IL6_JAK_STAT3"
 
 ```
 
-```{r}
-
-# os_scorePairs_mar[os_scorePairs_mar$VariableName == "CD8NK_Exh_Bulk_Str--TGFb_Signaling", ]
-
-```
 
 
 ### Plot survival
-Generate Figure 6C.
+Generate Figure 6B, and Figure S21. The code below, also generates soem other additional surival curves that have not been included in the paper.
 ```{r, fig.height = 6.5, fig.width = 12}
 library(gridExtra)
 
@@ -233,7 +145,6 @@ pdf(
   width = 12
 )
 
-# i <- "NK_Exh_Bulk--OXPHOS"
 for(j in com_os_scorePairs){
   survival_pairPlots(
   data1 = selScorePair_tcga,
@@ -263,11 +174,9 @@ dev.off()
 
 
 ### Coef plot
-Here we regenerate Figure 6A.
-
-If a data frame is used, it must contain columns named term (names of predictors) and estimate (corresponding estimates of coefficients or other quantities of interest).
-
+Generate Hazard ratio plots for  significant terms in both the TCGA and Marisa data.
 ```{r}
+# If a data frame is used, it must contain columns named term (names of predictors) and estimate (corresponding estimates of coefficients or other quantities of interest).
 cox_OS_2Comb_sig_tcga <- os_scorePairs_tcga
 
 ## subset to common ones
@@ -377,6 +286,8 @@ dev.off()
 
 
 ### logHR - OS
+
+Here, we convert the Hazard ratio to log Hazard ratio values to have a better visulization. Generate Supp. Figure S20 (top panel)
 ```{r}
 
 ddLog_tcga <- dd_tcga
@@ -429,16 +340,6 @@ dev.off()
 ```
 
 
-1: H&L vs H&H
-2: L&H vs H&L + H&H
-3: L&L vs L&H + H&L + H&H
-
-                                             [,1] [,2] [,3]
- High NK_Res_Bulk_Str & High NK_Exh_Bulk_Str   -1   -1   -1
- High NK_Res_Bulk_Str & Low NK_Exh_Bulk_Str     1   -1   -1
- Low NK_Res_Bulk_Str & High NK_Exh_Bulk_Str     0    2   -1
- Low NK_Res_Bulk_Str & Low NK_Exh_Bulk_Str      0    0    3
- 
 
 # Compare PFI (TCGA) and RFS (Marisa)
 ## Score pairs
@@ -467,10 +368,6 @@ pfi_scorePairs_tcga <-
   )
 
 
-##---- get common variable names
-# com_os_scorePairs <- intersect(os_scorePairs_tcga$VariableName, os_scorePairs_mar$VariableName)
-# com_os_scorePairs
-
 ##---- get common contrasts
 comCntrasts <-
   intersect(pfi_scorePairs_tcga$Contrast, rfs_scorePairs_mar$Contrast)
@@ -480,82 +377,9 @@ com_pfi_scorePairs <-
 
 com_pfi_scorePairs
 
-
-##--------- with covars
-# rfs_scorePairs_mar_cov <- read.csv(
-#   paste0(
-#     marPath,
-#     "Marisa_Cox_RFS_ExtremeScorePairs_significant_Str_pairwise6.csv"
-#   ),
-#   stringsAsFactors = F,
-#   check.names = F
-# )
-# 
-# pfi_scorePairs_tcga_cov <-
-#   read.csv(
-#     paste0(
-#       tcgaPath,
-#       "TCGA_Cox_PFI_ExtremeScorePairs_significant_Str_pairwise6.csv"
-#     ),
-#     stringsAsFactors = F,
-#     check.names = F
-#   )
-# 
-# comCntrasts_cov <-
-#   intersect(pfi_scorePairs_tcga_cov$Contrast, rfs_scorePairs_mar_cov$Contrast)
-# 
-# com_pfi_scorePairs_cov <-
-#   unique(pfi_scorePairs_tcga_cov$VariableName[pfi_scorePairs_tcga_cov$Contrast %in% comCntrasts_cov])
-# 
-# com_pfi_scorePairs_cov
-# 
-# 
-# 
-# com_pfi_scorePairs_cov
-#  [1] "CD8_Res_Bulk--CD8NK_Exh_Bulk" "CD8_Res_Bulk--Peroxisome"    
-#  [3] "CD8_Res_Bulk--Epi_Thiery"     "CD4_Res_Bulk--CD8NK_Exh_Bulk"
-#  [5] "NK_Res_Bulk--CD8_Exh_Bulk"    "NK_Res_Bulk--NK_Exh_Bulk"    
-#  [7] "NK_Res_Bulk--CD8NK_Exh_Bulk"  "NK_Res_Bulk--TP53_signaling" 
-#  [9] "NK_Res_Bulk--Peroxisome"      "NK_Res_Bulk--Epi_Thiery"     
-# [11] "CD8NK_Res_Bulk--NK_Exh_Bulk"  "CD8NK_Res_Bulk--Epi_Thiery"  
-# [13] "CD8_Exh_Bulk--NK_Res_Bulk"    "NK_Exh_Bulk--NK_Res_Bulk"    
-# [15] "NK_Exh_Bulk--CD8NK_Res_Bulk"  "CD8NK_Exh_Bulk--CD8_Res_Bulk"
-# [17] "CD8NK_Exh_Bulk--CD4_Res_Bulk" "CD8NK_Exh_Bulk--NK_Res_Bulk" 
-
-
-# com_pfi_scorePairs
-#  [1] "CD4_Res_Bulk--DDR"              "CD4_Res_Bulk--OXPHOS"          
-#  [3] "CD4_Res_Bulk--HPX_EGF_EMT"      "NK_Res_Bulk--NK_Exh_Bulk"      
-#  [5] "NK_Res_Bulk--CD8NK_Exh_Bulk"    "NK_Res_Bulk--OXPHOS"           
-#  [7] "NK_Res_Bulk--HPX_EGF_EMT"       "CD8NK_Res_Bulk--NK_Exh_Bulk"   
-#  [9] "CD8NK_Res_Bulk--CD8NK_Exh_Bulk" "CD8NK_Res_Bulk--DDR"           
-# [11] "CD8_Exh_Bulk--DDR"              "CD8_Exh_Bulk--OXPHOS"          
-# [13] "CD8_Exh_Bulk--HPX_EGF_EMT"      "CD4_Exh_Bulk--DDR"             
-# [15] "CD4_Exh_Bulk--OXPHOS"           "CD4_Exh_Bulk--HPX_EGF_EMT"     
-# [17] "NK_Exh_Bulk--NK_Res_Bulk"       "NK_Exh_Bulk--CD8NK_Res_Bulk"   
-# [19] "NK_Exh_Bulk--DDR"               "NK_Exh_Bulk--OXPHOS"           
-# [21] "NK_Exh_Bulk--HPX_EGF_EMT"       "NK_Exh_Bulk--Mes_Thiery"       
-# [23] "NK_Exh_Bulk--Epi_Thiery"        "NK_Exh_Bulk--TGFb_Signaling"   
-# [25] "CD8NK_Exh_Bulk--NK_Res_Bulk"    "CD8NK_Exh_Bulk--CD8NK_Res_Bulk"
-# [27] "CD8NK_Exh_Bulk--DDR"            "CD8NK_Exh_Bulk--OXPHOS"        
-# [29] "CD8NK_Exh_Bulk--HPX_EGF_EMT"    "CD8NK_Exh_Bulk--TGFb_Signaling"
-
-## 
-# intersect(com_pfi_scorePairs_cov, com_pfi_scorePairs)
-# [1] "NK_Res_Bulk--NK_Exh_Bulk"    "NK_Res_Bulk--CD8NK_Exh_Bulk" "CD8NK_Res_Bulk--NK_Exh_Bulk"
-# [4] "NK_Exh_Bulk--NK_Res_Bulk"    "NK_Exh_Bulk--CD8NK_Res_Bulk" "CD8NK_Exh_Bulk--NK_Res_Bulk"
-
-
-## 4 common contrasts
-# intersect(comCntrasts_cov, comCntrasts)
-# [1] "Low NK_Res_Bulk & High NK_Exh_Bulk - High NK_Res_Bulk & Low NK_Exh_Bulk"      
-# [2] "Low NK_Res_Bulk & High CD8NK_Exh_Bulk - High NK_Res_Bulk & Low CD8NK_Exh_Bulk"
-# [3] "Low NK_Exh_Bulk & High NK_Res_Bulk - High NK_Exh_Bulk & Low NK_Res_Bulk"      
-# [4] "Low CD8NK_Exh_Bulk & High NK_Res_Bulk - High CD8NK_Exh_Bulk & Low NK_Res_Bulk"
 ```
 
 Common significant score pairs and contrasts across the two survival metric (OS and PFI/RFS) in both data sets:
-
 ```{r}
 intersect(com_pfi_scorePairs, com_os_scorePairs)
 # [1] "CD4_Res_Bulk--CD8NK_Exh_Bulk"
@@ -580,7 +404,7 @@ intersect(  intersect(pfi_scorePairs_tcga$Contrast, rfs_scorePairs_mar$Contrast)
 ```
 
 ### Plot survival
-Generate Figure 7C, along with survival curves for other significant score pairs.
+Generate Supp. Figure S22 and S23, along with survival curves for other significant score pairs.
 ```{r}
 library(gridExtra)
 wide2CombLong_tcga <- readRDS(paste0(tcgaPath, "TCGA_Survival_PFI_ScoreExpr_wide_Str.RDS"))
@@ -632,7 +456,7 @@ dev.off()
 ```
 
 ### Coef plot
-Generate Figure 7A.
+Hazard ratio plot using PFI and RFS data.
 ```{r}
 cox_pfi_2Comb_sig_tcga <- pfi_scorePairs_tcga
 
@@ -647,9 +471,6 @@ cox_pfi_2Comb_sig_tcga$Contrast <- gsub(
   "Low", "L", cox_pfi_2Comb_sig_tcga$Contrast
 )
 
-
-
-
 cox_rfs_2Comb_sig_mar <- rfs_scorePairs_mar
 
 ## subset to common ones
@@ -663,9 +484,6 @@ cox_rfs_2Comb_sig_mar$Contrast <- gsub(
 cox_rfs_2Comb_sig_mar$Contrast <- gsub(
   "Low", "L", cox_rfs_2Comb_sig_mar$Contrast
 )
-
-
-
 
 
 dd_tcga <- cox_pfi_2Comb_sig_tcga[,
@@ -702,8 +520,6 @@ colnames(dd_tcga) <- colnames(dd_mar) <-
 dd_tcga <- dd_tcga[order(dd_tcga$estimate), ]
 dd_mar <- dd_mar[order(dd_mar$estimate), ]
 
-
-
 p1 <- ggstatsplot::ggcoefstats(
   x = dd_tcga, # for all significant terms in tcga
   output = "plot",
@@ -738,11 +554,10 @@ grid.arrange(p1, p2,
 
 dev.off()
 
-
-
 ```
 
 ### logHR - PFI
+Generate Supp. Figure S20 (bottom panel) containing log hazard ratios. 
 ```{r}
 ddLog_tcga <- dd_tcga
 ddLog_mar <- dd_mar

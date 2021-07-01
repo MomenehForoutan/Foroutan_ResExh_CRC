@@ -495,7 +495,7 @@ dev.off()
 ```
 
 
-We also generate a heatmap of the correlation values between Res/Exh scores and several immune signature scores from CIBERSORT. 
+We also generate a heatmap of the correlation values between Res/Exh scores and several immune signature scores from CIBERSORT. This generates Figure S14 - right panel.
 ```{r}
 
 corData <- data.frame(matrix(nrow = 24, ncol = 0))
@@ -556,7 +556,8 @@ dev.off()
 
 
 # Scatterplot of score pairs
-Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. The first bit of code generates many scatterplots comparing each signature with all other signatures; you could uncomment this section and export that in a PDF file to avoid overloading the html file. Here, we have commented the first section and only generate the scatterplots presented in the paper.
+Generate scatterplots of scores vs each other. Uncomment the commented sections to change the colour the data points based on CMS or MSI. 
+The below code generates many scatterplots comparing each signature with all other signatures; some of these regenerates a number of figures presented in the paper:
 
 ```{r}
 colnames(annMar)[colnames(annMar) == "mmr.status.ch1"] <- "MMR"  
