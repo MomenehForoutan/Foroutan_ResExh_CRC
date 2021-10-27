@@ -12,7 +12,10 @@ script/boxplot_vertical_ggplot.R
 
 data/CCLE_LCM/
 data/deAndrade/
-data/deVries/
+data/deVries/barcodes.tsv
+data/deVries/genes.tsv
+data/deVries/matrix.mtx
+data/deVries/celltoclusterID.CSV
 data/GSE146771/
 data/James_GutAtlas/
 data/GSE146771_Zhang_CRC/
